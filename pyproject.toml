@@ -1,10 +1,10 @@
 [project]
 name = "mm-clikit"
-version = "0.0.1"
+version = "0.0.2"
 description = "Shared CLI utilities library."
 keywords = []
 requires-python = ">=3.14"
-dependencies = ["mm-std~=0.7.1", "rich~=14.3.2", "tomlkit~=0.14.0", "typer~=0.21.1"]
+dependencies = ["mm-result~=0.2.0", "mm-std~=0.7.1", "pydantic~=2.12.5", "rich~=14.3.2", "tomlkit~=0.14.0", "typer~=0.21.1"]
 
 [build-system]
 requires = ["hatchling"]
