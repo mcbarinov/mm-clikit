@@ -25,6 +25,7 @@ import click
 import typer
 from typer import Typer
 from typer.core import TyperGroup
+from typer.models import DefaultPlaceholder
 
 from .output import print_plain
 
@@ -73,6 +74,7 @@ class AliasGroup(TyperGroup):
         # canonical name -> [aliases]
         self._cmd_aliases: dict[str, list[str]] = {}
 
+        # Command-level aliases (set via @app.command(aliases=[...]))
         for cmd_name, cmd in list(self.commands.items()):
             callback = getattr(cmd, "callback", None)
             aliases: list[str] = getattr(callback, _ALIASES_ATTR, [])
@@ -82,6 +84,16 @@ class AliasGroup(TyperGroup):
             for alias in aliases:
                 self._alias_to_cmd[alias] = cmd_name
                 self.commands[alias] = cmd
+
+        # Group-level aliases (set via app.add_typer(aliases=[...]))
+        group_aliases: dict[str, list[str]] = getattr(type(self), "_bound_group_aliases", {})
+        for cmd_name, g_aliases in group_aliases.items():
+            if cmd_name not in self.commands:
+                continue
+            self._cmd_aliases[cmd_name] = list(g_aliases)
+            for alias in g_aliases:
+                self._alias_to_cmd[alias] = cmd_name
+                self.commands[alias] = self.commands[cmd_name]
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         """Resolve alias to canonical command before lookup."""
@@ -143,7 +155,13 @@ class TyperPlus(Typer):
 
     def __init__(self, *, package_name: str | None = None, **kwargs: Any) -> None:  # noqa: ANN401 — must forward arbitrary kwargs to Typer
         """Set AliasGroup as default cls and optionally register --version."""
-        kwargs.setdefault("cls", AliasGroup)
+        # Mutable dict shared with the dynamic subclass; populated by add_typer()
+        self._group_aliases: dict[str, list[str]] = {}
+
+        if "cls" not in kwargs:
+            group_aliases = self._group_aliases
+            kwargs["cls"] = type("BoundAliasGroup", (AliasGroup,), {"_bound_group_aliases": group_aliases})
+
         kwargs.setdefault("no_args_is_help", True)
         kwargs.setdefault("pretty_exceptions_enable", False)
         super().__init__(**kwargs)
@@ -194,6 +212,17 @@ class TyperPlus(Typer):
             return parent_decorator(wrapper)
 
         return injecting_decorator
+
+    def add_typer(self, typer_instance: Typer, *, aliases: list[str] | None = None, **kwargs: Any) -> None:  # noqa: ANN401 — must forward arbitrary kwargs to Typer.add_typer
+        """Register a sub-application with optional aliases."""
+        super().add_typer(typer_instance, **kwargs)
+        if aliases:
+            name = kwargs.get("name")
+            if isinstance(name, DefaultPlaceholder):
+                name = name.value
+            if name is None:
+                raise ValueError("Cannot set aliases without a name. Provide name= in add_typer().")
+            self._group_aliases[name] = list(aliases)
 
     def command(
         self,

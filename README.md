@@ -28,6 +28,21 @@ def deploy():
 Running `my-app --version` prints `my-app: 0.1.0` and exits.
 Running `my-app d` is equivalent to `my-app deploy`. Help output shows `deploy (d)`.
 
+Group aliases work the same way with `add_typer`:
+
+```python
+sub = TyperPlus()
+
+@sub.command("run")
+def run_cmd():
+    """Run something."""
+    ...
+
+app.add_typer(sub, name="public", aliases=["p"])
+```
+
+Running `my-app p run` is equivalent to `my-app public run`. Help output shows `public (p)`.
+
 `--version` / `-V` is automatically available even with a custom callback:
 
 ```python

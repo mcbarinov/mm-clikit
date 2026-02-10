@@ -298,3 +298,100 @@ class TestCommandDecorator:
             """Command."""
 
         assert getattr(cmd, "_typer_aliases", None) == []
+
+
+class TestGroupAliases:
+    """Tests for group-level aliases via add_typer(aliases=[...])."""
+
+    @pytest.fixture()
+    def group_app(self) -> typer.Typer:
+        """App with a sub-app registered using group aliases."""
+        app = mm_clikit.TyperPlus()
+
+        sub = mm_clikit.TyperPlus()
+
+        @sub.command("run")
+        def run_cmd() -> None:
+            """Run something."""
+            typer.echo("sub-run")
+
+        app.add_typer(sub, name="public", aliases=["p"])
+
+        @app.command("top")
+        def top_cmd() -> None:
+            """Top-level command."""
+            typer.echo("top-ok")
+
+        return app
+
+    def test_canonical_name(self, group_app: typer.Typer) -> None:
+        """Canonical group name resolves correctly."""
+        result = runner.invoke(group_app, ["public", "run"])
+        assert result.exit_code == 0
+        assert "sub-run" in result.output
+
+    def test_alias_resolves(self, group_app: typer.Typer) -> None:
+        """Alias resolves to canonical group."""
+        result = runner.invoke(group_app, ["p", "run"])
+        assert result.exit_code == 0
+        assert "sub-run" in result.output
+
+    def test_help_shows_alias(self, group_app: typer.Typer) -> None:
+        """Help output shows alias in parentheses."""
+        result = runner.invoke(group_app, ["--help"])
+        assert result.exit_code == 0
+        assert "public (p)" in result.output
+
+    def test_list_commands_excludes_alias(self, group_app: typer.Typer) -> None:
+        """list_commands returns only canonical names."""
+        group: AliasGroup = typer.main.get_command(group_app)  # type: ignore[assignment]
+        ctx = click.Context(group)
+        names = group.list_commands(ctx)
+        assert "public" in names
+        assert "p" not in names
+
+    def test_multi_alias(self) -> None:
+        """Multiple group aliases all resolve."""
+        app = mm_clikit.TyperPlus()
+        sub = mm_clikit.TyperPlus()
+
+        @sub.command("ping")
+        def ping_cmd() -> None:
+            """Ping."""
+            typer.echo("pong")
+
+        app.add_typer(sub, name="network", aliases=["net", "n"])
+
+        for alias in ["network", "net", "n"]:
+            result = runner.invoke(app, [alias, "ping"])
+            assert result.exit_code == 0, f"Failed for {alias}"
+            assert "pong" in result.output
+
+    def test_combined_with_command_aliases(self) -> None:
+        """Group aliases and command aliases work together."""
+        app = mm_clikit.TyperPlus()
+        sub = mm_clikit.TyperPlus()
+
+        @sub.command("deploy", aliases=["d"])
+        def deploy_cmd() -> None:
+            """Deploy."""
+            typer.echo("deployed")
+
+        app.add_typer(sub, name="service", aliases=["svc"])
+
+        result = runner.invoke(app, ["svc", "d"])
+        assert result.exit_code == 0
+        assert "deployed" in result.output
+
+    def test_alias_without_name_raises(self) -> None:
+        """Passing aliases without name raises ValueError."""
+        app = mm_clikit.TyperPlus()
+        sub = mm_clikit.TyperPlus()
+
+        with pytest.raises(ValueError, match="Cannot set aliases without a name"):
+            app.add_typer(sub, aliases=["x"])
+
+    def test_isinstance_alias_group(self, group_app: typer.Typer) -> None:
+        """Bound subclass is still isinstance of AliasGroup."""
+        group = typer.main.get_command(group_app)
+        assert isinstance(group, AliasGroup)
