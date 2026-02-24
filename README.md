@@ -133,3 +133,19 @@ print_toml({"server": {"host": "localhost", "port": 8080}})
 # With line numbers and a custom theme
 print_toml({"debug": True}, line_numbers=True, theme="dracula")
 ```
+
+## Examples
+
+Runnable examples in [`examples/`](examples/):
+
+- **single_command.py** — single-command mode with `--version`
+- **multi_command.py** — command aliases, group aliases, custom callback
+- **output_showcase.py** — all output functions (`print_plain`, `print_json`, `print_table`, `print_toml`)
+- **toml_config.py** — `TomlConfig` with Pydantic validation
+
+```bash
+uv run examples/multi_command.py --help
+uv run examples/single_command.py --version
+uv run examples/output_showcase.py table
+uv run examples/toml_config.py run --config examples/sample_config.toml
+```

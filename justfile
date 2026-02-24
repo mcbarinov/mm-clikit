@@ -8,16 +8,23 @@ build: clean
     uv build
 
 format:
-    uv run ruff check --select I --fix src tests
-    uv run ruff format src tests
+    uv run ruff check --select I --fix src tests examples
+    uv run ruff format src tests examples
 
 test:
     uv run pytest -n auto tests
 
 lint: format pre-commit
-    uv run ruff check src tests
+    uv run ruff check src tests examples
     uv run ty check
     uv run mypy src
+
+examples:
+    #!/usr/bin/env bash
+    for f in examples/*.py; do
+        echo "--- $f ---"
+        uv run "$f" --help
+    done
 
 audit:
     uv export --no-dev --all-extras --format requirements-txt --no-emit-project > requirements.txt

@@ -4,7 +4,7 @@ version = "0.0.7"
 description = "Shared CLI utilities library."
 keywords = []
 requires-python = ">=3.14"
-dependencies = ["mm-result~=0.2.0", "mm-std~=0.7.1", "pydantic~=2.12.5", "rich~=14.3.2", "tomlkit~=0.14.0", "typer~=0.21.1"]
+dependencies = ["mm-result~=0.2.0", "mm-std~=0.7.1", "pydantic~=2.12.5", "rich~=14.3.3", "tomlkit~=0.14.0", "typer~=0.24.1"]
 
 [build-system]
 requires = ["hatchling"]
@@ -18,8 +18,8 @@ dev = [
     "pre-commit~=4.5.1",
     "pytest~=9.0.2",
     "pytest-xdist~=3.8.0",
-    "ruff~=0.15.0",
-    "ty~=0.0.15",
+    "ruff~=0.15.2",
+    "ty~=0.0.18",
 ]
 
 [tool.mypy]
@@ -63,6 +63,7 @@ ignore = [
 classmethod-decorators = ["field_validator"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN", "S"]
+"examples/**/*.py" = ["INP001"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
