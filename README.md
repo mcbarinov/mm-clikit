@@ -14,6 +14,11 @@ uv add mm-clikit
 
 Drop-in `Typer` replacement with automatic `--version`/`-V` and command aliases.
 
+Opinionated defaults (different from Typer):
+- `no_args_is_help=True` — shows help when invoked without arguments
+- `pretty_exceptions_enable=False` — disables Rich exception formatting
+- `hide_meta_options=True` — see [below](#clean-help-output)
+
 ```python
 from mm_clikit import TyperPlus
 
@@ -59,6 +64,23 @@ def main(
 
 > **Note:** If you define a `_version` parameter in your callback, auto-injection is skipped
 > and your definition takes precedence.
+
+#### Clean help output
+
+By default `hide_meta_options=True` removes `--help`, `--version`, `--install-completion`,
+and `--show-completion` from normal `--help` output to keep it focused on app-specific options.
+A `--help-all` flag is added to show the full unfiltered help.
+
+```
+$ my-app --help        # only app-specific options
+$ my-app --help-all    # all options including --help, --version, etc.
+```
+
+To disable this and show all options in `--help`:
+
+```python
+app = TyperPlus(package_name="my-app", hide_meta_options=False)
+```
 
 ### fatal
 
@@ -133,6 +155,29 @@ print_toml({"server": {"host": "localhost", "port": 8080}})
 # With line numbers and a custom theme
 print_toml({"debug": True}, line_numbers=True, theme="dracula")
 ```
+
+### TomlConfig
+
+Pydantic-based TOML configuration loader. Inherits from `BaseModel` with `extra="forbid"`.
+
+```python
+from pathlib import Path
+from mm_clikit import TomlConfig
+
+class AppConfig(TomlConfig):
+    host: str = "localhost"
+    port: int = 8080
+    debug: bool = False
+
+config = AppConfig.load_or_exit(Path("config.toml"))
+```
+
+Loading methods:
+- `load(path)` — returns `Result[Self]` (from `mm-result`)
+- `load_or_exit(path)` — returns the config or prints validation errors and exits with code 1
+- `print_and_exit()` — prints the config as formatted TOML and exits
+
+Both `load` and `load_or_exit` accept a `password` parameter for loading from password-protected zip archives.
 
 ## Examples
 

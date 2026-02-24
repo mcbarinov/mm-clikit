@@ -507,3 +507,71 @@ class TestSingleCommandMode:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "mm-clikit:" in result.output
+
+
+class TestHideMetaOptions:
+    """Tests for hide_meta_options feature."""
+
+    @pytest.fixture()
+    def meta_app(self) -> typer.Typer:
+        """Multi-command app with package_name (hide_meta_options=True by default)."""
+        app = mm_clikit.TyperPlus(package_name="mm-clikit")
+
+        @app.command("noop")
+        def noop() -> None:
+            """No-op."""
+
+        @app.command("other")
+        def other() -> None:
+            """Other."""
+
+        return app
+
+    def test_normal_help_hides_meta_options(self, meta_app: typer.Typer) -> None:
+        """Normal --help hides --version, --install-completion, --show-completion."""
+        result = runner.invoke(meta_app, ["--help"])
+        assert result.exit_code == 0
+        assert "--version" not in result.output
+        assert "--install-completion" not in result.output
+        assert "--show-completion" not in result.output
+
+    def test_help_all_shows_all_options(self, meta_app: typer.Typer) -> None:
+        """--help-all shows all options including hidden meta ones."""
+        result = runner.invoke(meta_app, ["--help-all"])
+        assert result.exit_code == 0
+        assert "--version" in result.output
+        assert "--install-completion" in result.output
+        assert "--show-completion" in result.output
+        assert "--help" in result.output
+
+    def test_disabled_shows_all_in_normal_help(self) -> None:
+        """hide_meta_options=False keeps all options visible in normal --help."""
+        app = mm_clikit.TyperPlus(package_name="mm-clikit", hide_meta_options=False)
+
+        @app.command("noop")
+        def noop() -> None:
+            """No-op."""
+
+        @app.command("other")
+        def other() -> None:
+            """Other."""
+
+        result = runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "--version" in result.output
+        assert "--install-completion" in result.output
+
+    def test_disabled_no_help_all_flag(self) -> None:
+        """hide_meta_options=False does not add --help-all."""
+        app = mm_clikit.TyperPlus(hide_meta_options=False)
+
+        @app.command("noop")
+        def noop() -> None:
+            """No-op."""
+
+        @app.command("other")
+        def other() -> None:
+            """Other."""
+
+        result = runner.invoke(app, ["--help-all"])
+        assert result.exit_code != 0

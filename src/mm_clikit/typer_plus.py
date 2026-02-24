@@ -18,14 +18,13 @@ Provides ``TyperPlus``, a drop-in ``Typer`` replacement that adds:
 import importlib.metadata
 import inspect
 from collections.abc import Callable, Sequence
-from functools import wraps
 from typing import Any, ClassVar
 
 import click
 import typer
 from typer import Typer
-from typer.core import TyperGroup
-from typer.models import DefaultPlaceholder, TyperInfo
+from typer.core import TyperCommand, TyperGroup
+from typer.models import CommandInfo, DefaultPlaceholder, TyperInfo
 
 from .output import print_plain
 
@@ -61,6 +60,43 @@ def _is_meta_option(param: click.Parameter) -> bool:
     return bool((set(param.opts) | set(param.secondary_opts)) & _META_OPTION_STRINGS)
 
 
+def _has_version_option(params: list[click.Parameter]) -> bool:
+    """Check if --version already exists in a list of Click parameters."""
+    return any(isinstance(p, click.Option) and "--version" in p.opts for p in params)
+
+
+def _make_version_option(package_name: str) -> click.Option:
+    """Create a ``--version``/``-V`` Click Option with ``expose_value=False``."""
+    version_cb = create_version_callback(package_name)
+
+    def callback(_ctx: click.Context, _param: click.Parameter, value: bool) -> None:
+        """Delegate to the version callback."""
+        version_cb(value)
+
+    return click.Option(
+        ["--version", "-V"],
+        is_flag=True,
+        is_eager=True,
+        expose_value=False,
+        callback=callback,
+        help="Show version and exit.",
+    )
+
+
+def _make_version_command_cls(package_name: str) -> type[TyperCommand]:
+    """Create a TyperCommand subclass that appends ``--version`` in ``__init__``."""
+
+    class VersionCommand(TyperCommand):
+        """TyperCommand that auto-appends --version to params."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+            super().__init__(*args, **kwargs)
+            if not _has_version_option(self.params):
+                self.params.append(_make_version_option(package_name))
+
+    return VersionCommand
+
+
 class AliasGroup(TyperGroup):
     """TyperGroup subclass that supports command aliases with help display.
 
@@ -70,6 +106,7 @@ class AliasGroup(TyperGroup):
     """
 
     _hide_meta_options: ClassVar[bool] = False
+    _package_name: ClassVar[str | None] = None
 
     def __init__(
         self,
@@ -80,6 +117,10 @@ class AliasGroup(TyperGroup):
     ) -> None:
         """Scan commands for alias attributes and build alias mappings."""
         super().__init__(name=name, commands=commands, **attrs)
+
+        # Append --version when package_name is set (multi-command / group mode)
+        if self._package_name and not _has_version_option(self.params):
+            self.params.append(_make_version_option(self._package_name))
 
         # tracks whether --help-all was invoked
         self._show_full_help = False
@@ -201,10 +242,10 @@ class TyperPlus(Typer):
     """Typer subclass with command aliases and built-in ``--version``.
 
     Args:
-        package_name: If set, auto-registers a ``--version`` / ``-V`` callback
+        package_name: If set, auto-registers a ``--version`` / ``-V`` flag
             that prints ``{package_name}: {version}`` and exits.  The flag
             persists even when a custom ``@app.callback()`` is registered.
-            Defining a ``_version`` parameter in your callback skips
+            Defining a ``--version`` option in your callback skips
             auto-injection.
         hide_meta_options: Hide meta options (--help, --version, --install-completion,
             --show-completion) from normal help output.  Adds ``--help-all`` to show
@@ -218,8 +259,6 @@ class TyperPlus(Typer):
         # Init before super().__init__() — Typer's init writes self.registered_callback = None
         self._registered_callback: TyperInfo | None = None
         self._package_name = package_name
-        # guards lazy version setup in registered_callback property
-        self._version_setup_done = False
 
         # Mutable dict shared with the dynamic subclass; populated by add_typer()
         self._group_aliases: dict[str, list[str]] = {}
@@ -227,7 +266,9 @@ class TyperPlus(Typer):
         if "cls" not in kwargs:
             group_aliases = self._group_aliases
             kwargs["cls"] = type(
-                "BoundAliasGroup", (AliasGroup,), {"_bound_group_aliases": group_aliases, "_hide_meta_options": hide_meta_options}
+                "BoundAliasGroup",
+                (AliasGroup,),
+                {"_bound_group_aliases": group_aliases, "_hide_meta_options": hide_meta_options, "_package_name": package_name},
             )
 
         kwargs.setdefault("no_args_is_help", True)
@@ -236,117 +277,45 @@ class TyperPlus(Typer):
 
     @property
     def registered_callback(self) -> TyperInfo | None:
-        """Lazy property that triggers version setup on first read.
+        """Lazy property that sets up single-command version injection on first read.
 
         Typer's ``get_command()`` reads this attribute to decide Group vs Command mode.
-        By deferring setup, single-command apps stay in single-command mode.
+        For single-command apps, sets ``cmd_info.cls`` to a VersionCommand subclass.
+        Multi-command mode is handled by AliasGroup (appends --version to group params).
         """
-        self._ensure_version_setup()
+        if self._package_name and self._registered_callback is None:
+            self._setup_single_command_version()
         return self._registered_callback
 
     @registered_callback.setter
     def registered_callback(self, value: TyperInfo | None) -> None:  # pyright: ignore[reportIncompatibleVariableOverride]
         self._registered_callback = value
 
-    def _ensure_version_setup(self) -> None:
-        """Lazily inject ``--version`` based on the final app structure.
-
-        - **Single command** (1 command, no user callback, no groups): inject
-          ``--version`` into the command's params so Typer stays in single-command mode.
-        - **Multi-command** (2+ commands or groups): register a default callback.
-        - **User callback exists**: skip — the ``callback()`` override handles injection.
-        """
-        if self._version_setup_done or not self._package_name:
+    def _setup_single_command_version(self) -> None:
+        """For single-command mode: set command cls to inject --version at Click level."""
+        if len(self.registered_commands) != 1 or self.registered_groups:
             return
-        self._version_setup_done = True
-
-        # User already registered a callback — the callback() override handles injection
-        if self._registered_callback is not None:
+        cmd_info = self.registered_commands[0]
+        if cmd_info.callback is None:
             return
 
-        has_groups = bool(self.registered_groups)
-        num_commands = len(self.registered_commands)
+        cmd_info.cls = _make_version_command_cls(self._package_name)  # type: ignore[arg-type]
+        self._propagate_no_args_is_help(cmd_info)
 
-        if num_commands == 1 and not has_groups:
-            # Single-command mode: inject --version directly into the command's callback
-            cmd_info = self.registered_commands[0]
-            if cmd_info.callback is None:
-                return
+    def _propagate_no_args_is_help(self, cmd_info: CommandInfo) -> None:
+        """Propagate app-level no_args_is_help to a single command if it has required params."""
+        app_no_args = self.info.no_args_is_help
+        if not (isinstance(app_no_args, bool) and app_no_args) or cmd_info.no_args_is_help:
+            return
 
-            version_cb = create_version_callback(self._package_name)
-            original_callback = cmd_info.callback
-            sig = inspect.signature(original_callback)
-            version_param = inspect.Parameter(
-                "_version",
-                inspect.Parameter.KEYWORD_ONLY,
-                default=typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True, help="Show version and exit."),
-                annotation=bool | None,
-            )
-
-            @wraps(original_callback)
-            def wrapper(*args: Any, _version: bool | None = None, **f_kwargs: Any) -> Any:  # noqa: ANN401 — must match arbitrary user callback signatures
-                return original_callback(*args, **f_kwargs)
-
-            wrapper.__signature__ = sig.replace(parameters=[*sig.parameters.values(), version_param])  # type: ignore[attr-defined]
-            wrapper.__annotations__ = {**original_callback.__annotations__, "_version": bool | None}
-            cmd_info.callback = wrapper
-
-            # Propagate app-level no_args_is_help to the command only if it has required params
-            app_no_args = self.info.no_args_is_help
-            has_required_params = any(
-                p.default is inspect.Parameter.empty
-                and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-                for p in sig.parameters.values()
-            )
-            if isinstance(app_no_args, bool) and app_no_args and has_required_params and not cmd_info.no_args_is_help:
-                cmd_info.no_args_is_help = True
-        else:
-            # Multi-command mode: register a default callback with --version
-            version_cb = create_version_callback(self._package_name)
-
-            @self.callback()
-            def _default_callback(
-                _version: bool | None = typer.Option(
-                    None, "--version", "-V", callback=version_cb, is_eager=True, help="Show version and exit."
-                ),
-            ) -> None:
-                """Default callback with --version support."""
-
-    def callback(self, *args: Any, **kwargs: Any) -> Callable[..., Any]:  # noqa: ANN401 — must forward arbitrary kwargs to Typer.callback
-        """Register a callback, auto-injecting ``--version`` if ``package_name`` is set.
-
-        Injection is skipped when the decorated function already has a ``_version`` parameter.
-        """
-        parent_decorator = super().callback(*args, **kwargs)
-
-        package_name = self._package_name
-        if not package_name:
-            return parent_decorator
-
-        def injecting_decorator(f: Callable[..., Any]) -> Callable[..., Any]:
-            # Skip injection if user already defined _version
-            sig = inspect.signature(f)
-            if "_version" in sig.parameters:
-                return parent_decorator(f)
-
-            version_cb = create_version_callback(package_name)
-            version_param = inspect.Parameter(
-                "_version",
-                inspect.Parameter.KEYWORD_ONLY,
-                default=typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True, help="Show version and exit."),
-                annotation=bool | None,
-            )
-
-            @wraps(f)
-            def wrapper(*f_args: Any, _version: bool | None = None, **f_kwargs: Any) -> Any:  # noqa: ANN401 — must match arbitrary user callback signatures
-                return f(*f_args, **f_kwargs)
-
-            wrapper.__signature__ = sig.replace(parameters=[*sig.parameters.values(), version_param])  # type: ignore[attr-defined]
-            wrapper.__annotations__ = {**f.__annotations__, "_version": bool | None}
-
-            return parent_decorator(wrapper)
-
-        return injecting_decorator
+        sig = inspect.signature(cmd_info.callback)  # type: ignore[arg-type]
+        has_required = any(
+            p.default is inspect.Parameter.empty
+            and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            for p in sig.parameters.values()
+        )
+        if has_required:
+            cmd_info.no_args_is_help = True
 
     def add_typer(self, typer_instance: Typer, *, aliases: list[str] | None = None, **kwargs: Any) -> None:  # noqa: ANN401 — must forward arbitrary kwargs to Typer.add_typer
         """Register a sub-application with optional aliases."""
