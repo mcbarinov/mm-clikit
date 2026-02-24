@@ -217,7 +217,7 @@ class TyperPlus(Typer):
             version_param = inspect.Parameter(
                 "_version",
                 inspect.Parameter.KEYWORD_ONLY,
-                default=typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True),
+                default=typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True, help="Show version and exit."),
                 annotation=bool | None,
             )
 
@@ -244,7 +244,9 @@ class TyperPlus(Typer):
 
             @self.callback()
             def _default_callback(
-                _version: bool | None = typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True),
+                _version: bool | None = typer.Option(
+                    None, "--version", "-V", callback=version_cb, is_eager=True, help="Show version and exit."
+                ),
             ) -> None:
                 """Default callback with --version support."""
 
@@ -269,7 +271,7 @@ class TyperPlus(Typer):
             version_param = inspect.Parameter(
                 "_version",
                 inspect.Parameter.KEYWORD_ONLY,
-                default=typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True),
+                default=typer.Option(None, "--version", "-V", callback=version_cb, is_eager=True, help="Show version and exit."),
                 annotation=bool | None,
             )
 
