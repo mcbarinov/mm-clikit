@@ -19,7 +19,7 @@ import importlib.metadata
 import inspect
 from collections.abc import Callable, Sequence
 from functools import wraps
-from typing import Any
+from typing import Any, ClassVar
 
 import click
 import typer
@@ -50,6 +50,16 @@ def create_version_callback(package_name: str) -> Callable[[bool], None]:
 # Attribute name stored on command callbacks to carry alias info
 _ALIASES_ATTR = "_typer_aliases"
 
+# Option strings considered "meta" — always present, rarely useful in help
+_META_OPTION_STRINGS = frozenset({"--help", "--help-all", "--version", "-V", "--install-completion", "--show-completion"})
+
+
+def _is_meta_option(param: click.Parameter) -> bool:
+    """Check whether a Click parameter is a meta option (help, version, completion)."""
+    if not isinstance(param, click.Option):
+        return False
+    return bool((set(param.opts) | set(param.secondary_opts)) & _META_OPTION_STRINGS)
+
 
 class AliasGroup(TyperGroup):
     """TyperGroup subclass that supports command aliases with help display.
@@ -58,6 +68,8 @@ class AliasGroup(TyperGroup):
     builds alias-to-canonical mappings, and patches help output so aliases
     appear next to their canonical command name (e.g. ``deploy (d)``).
     """
+
+    _hide_meta_options: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -68,6 +80,34 @@ class AliasGroup(TyperGroup):
     ) -> None:
         """Scan commands for alias attributes and build alias mappings."""
         super().__init__(name=name, commands=commands, **attrs)
+
+        # tracks whether --help-all was invoked
+        self._show_full_help = False
+
+        # Append --help-all when meta options are hidden
+        if self._hide_meta_options:
+
+            def help_all_callback(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
+                """Show full help with all options."""
+                if not value or ctx.resilient_parsing:
+                    return
+                cmd = ctx.command
+                if isinstance(cmd, AliasGroup):
+                    cmd._show_full_help = True  # noqa: SLF001
+                click.echo(ctx.get_help())
+                ctx.exit()
+
+            self.params.append(
+                click.Option(
+                    ["--help-all"],
+                    is_flag=True,
+                    is_eager=True,
+                    expose_value=False,
+                    hidden=False,
+                    callback=help_all_callback,
+                    help="Show all options and exit.",
+                ),
+            )
 
         # alias -> canonical name
         self._alias_to_cmd: dict[str, str] = {}
@@ -113,6 +153,21 @@ class AliasGroup(TyperGroup):
                 originals[cmd_name] = cmd.name
                 alias_str = ", ".join(aliases)
                 cmd.name = f"{cmd.name} ({alias_str})"
+
+        # Temporarily hide meta options in normal help
+        hidden_originals: list[tuple[click.Option, bool]] = []
+        if self._hide_meta_options and not self._show_full_help:
+            for param in self.params:
+                if isinstance(param, click.Option) and _is_meta_option(param) and not param.hidden:
+                    hidden_originals.append((param, param.hidden))
+                    param.hidden = True
+            # --help is stored separately by Click (not in self.params);
+            # use get_help_option() to force-create it if not cached yet
+            help_opt = self.get_help_option(ctx)
+            if help_opt is not None and not help_opt.hidden:
+                hidden_originals.append((help_opt, help_opt.hidden))
+                help_opt.hidden = True
+
         try:
             super().format_help(ctx, formatter)
         finally:
@@ -120,6 +175,8 @@ class AliasGroup(TyperGroup):
                 cmd = self.commands.get(cmd_name)
                 if cmd:
                     cmd.name = original_name
+            for opt, was_hidden in hidden_originals:
+                opt.hidden = was_hidden
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Non-Rich fallback: show aliases in parentheses next to command names."""
@@ -149,11 +206,14 @@ class TyperPlus(Typer):
             persists even when a custom ``@app.callback()`` is registered.
             Defining a ``_version`` parameter in your callback skips
             auto-injection.
+        hide_meta_options: Hide meta options (--help, --version, --install-completion,
+            --show-completion) from normal help output.  Adds ``--help-all`` to show
+            the full unfiltered help.  Defaults to ``True``.
         **kwargs: Forwarded to ``Typer.__init__``.
 
     """
 
-    def __init__(self, *, package_name: str | None = None, **kwargs: Any) -> None:  # noqa: ANN401 — must forward arbitrary kwargs to Typer
+    def __init__(self, *, package_name: str | None = None, hide_meta_options: bool = True, **kwargs: Any) -> None:  # noqa: ANN401 — must forward arbitrary kwargs to Typer
         """Set AliasGroup as default cls and optionally register --version."""
         # Init before super().__init__() — Typer's init writes self.registered_callback = None
         self._registered_callback: TyperInfo | None = None
@@ -166,7 +226,9 @@ class TyperPlus(Typer):
 
         if "cls" not in kwargs:
             group_aliases = self._group_aliases
-            kwargs["cls"] = type("BoundAliasGroup", (AliasGroup,), {"_bound_group_aliases": group_aliases})
+            kwargs["cls"] = type(
+                "BoundAliasGroup", (AliasGroup,), {"_bound_group_aliases": group_aliases, "_hide_meta_options": hide_meta_options}
+            )
 
         kwargs.setdefault("no_args_is_help", True)
         kwargs.setdefault("pretty_exceptions_enable", False)
