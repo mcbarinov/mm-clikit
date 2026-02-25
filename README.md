@@ -179,6 +179,93 @@ Loading methods:
 
 Both `load` and `load_or_exit` accept a `password` parameter for loading from password-protected zip archives.
 
+### Process management
+
+Utilities for PID files, liveness checks, spawning, and stopping processes. Pure stdlib, no external dependencies.
+
+#### read_pid_file / write_pid_file
+
+```python
+from pathlib import Path
+from mm_clikit import read_pid_file, write_pid_file
+
+pid_path = Path("/tmp/my-daemon.pid")
+
+# Atomically write current process PID (creates parent dirs)
+write_pid_file(pid_path)
+
+# Read PID back (returns None if missing, unreadable, or invalid)
+pid = read_pid_file(pid_path)
+```
+
+#### is_process_running
+
+Check whether the process recorded in a PID file is alive.
+
+```python
+from mm_clikit import is_process_running
+
+# Basic check
+if is_process_running(pid_path):
+    print("daemon is running")
+
+# Verify command line and clean up stale PID files
+if is_process_running(pid_path, command_contains="my-daemon", remove_stale=True):
+    print("daemon is running")
+```
+
+Options:
+- `command_contains` — verify the process command line contains this substring (via `ps`)
+- `remove_stale` — delete the PID file if the process is dead
+- `skip_self` — return `False` if the recorded PID is the current process
+
+#### stop_process
+
+Send SIGTERM and wait for graceful shutdown, with optional SIGKILL fallback.
+
+```python
+from mm_clikit import stop_process
+
+stopped = stop_process(pid, timeout=5.0)
+```
+
+Returns `True` if the process was stopped (or was already dead).
+With `force_kill=False`, returns `False` if the process is still running after timeout.
+
+#### spawn_detached
+
+Launch a detached background process (new session, stdin/stdout/stderr redirected to `/dev/null`).
+
+```python
+from mm_clikit import spawn_detached
+
+pid = spawn_detached(["my-cli", "daemon", "--port", "8080"])
+```
+
+#### Daemon guard example
+
+Combining the functions for a typical daemon start/stop pattern:
+
+```python
+from pathlib import Path
+from mm_clikit import is_process_running, read_pid_file, spawn_detached, stop_process, write_pid_file
+
+pid_path = Path("/tmp/my-daemon.pid")
+
+def start():
+    if is_process_running(pid_path, command_contains="my-daemon", remove_stale=True):
+        fatal("daemon is already running")
+    pid = spawn_detached(["my-daemon", "serve"])
+    # or write_pid_file(pid_path) from inside the daemon itself
+
+def stop():
+    pid = read_pid_file(pid_path)
+    if pid is None:
+        fatal("daemon is not running")
+    stop_process(pid)
+    pid_path.unlink(missing_ok=True)
+```
+
 ## Examples
 
 Runnable examples in [`examples/`](examples/):
