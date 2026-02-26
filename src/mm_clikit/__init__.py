@@ -1,5 +1,6 @@
 """Shared CLI utilities library."""
 
+from .dual_mode_output import DualModeOutput as DualModeOutput
 from .output import print_json as print_json
 from .output import print_plain as print_plain
 from .output import print_table as print_table

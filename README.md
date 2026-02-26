@@ -92,6 +92,30 @@ from mm_clikit import fatal
 fatal("something went wrong")
 ```
 
+### DualModeOutput
+
+Base class for CLI output handlers that support both JSON and human-readable modes.
+Subclass it and add domain-specific print methods that delegate to `print`.
+
+```python
+from mm_clikit import DualModeOutput
+
+class Output(DualModeOutput):
+    def item_created(self, item_id: int, name: str) -> None:
+        self.print({"id": item_id, "name": name}, f"Created: {name}")
+
+out = Output(json_mode=False)
+out.item_created(1, "my-item")       # prints: Created: my-item
+
+out = Output(json_mode=True)
+out.item_created(1, "my-item")       # prints: {"ok": true, "data": {"id": 1, "name": "my-item"}}
+
+out.print_error_and_exit("NOT_FOUND", "item not found")
+# JSON mode  → stdout: {"ok": false, "error": "NOT_FOUND", "message": "item not found"}
+# Plain mode → stderr: Error: item not found
+# Both exit with code 1
+```
+
 ### Output functions
 
 #### print_plain
