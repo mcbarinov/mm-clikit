@@ -274,10 +274,12 @@ Runnable examples in [`examples/`](examples/):
 - **multi_command.py** — command aliases, group aliases, custom callback
 - **output_showcase.py** — all output functions (`print_plain`, `print_json`, `print_table`, `print_toml`)
 - **toml_config.py** — `TomlConfig` with Pydantic validation
+- **process_demo.py** — daemon start/stop/status with PID files
 
 ```bash
 uv run examples/multi_command.py --help
 uv run examples/single_command.py --version
 uv run examples/output_showcase.py table
 uv run examples/toml_config.py run --config examples/sample_config.toml
+uv run examples/process_demo.py start && uv run examples/process_demo.py status && uv run examples/process_demo.py stop
 ```

@@ -12,5 +12,4 @@ pip-wheel-metadata
 .ruff_cache
 /dist
 /build
-/tmp
 .DS_Store
