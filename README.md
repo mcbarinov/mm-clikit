@@ -269,14 +269,14 @@ stopped = stop_process(pid, timeout=5.0)
 Returns `True` if the process was stopped (or was already dead).
 With `force_kill=False`, returns `False` if the process is still running after timeout.
 
-#### spawn_detached
+#### spawn_daemon
 
-Launch a detached background process (new session, stdin/stdout/stderr redirected to `/dev/null`).
+Launch a daemon process using double-fork (adopted by init, stdin/stdout/stderr redirected to `/dev/null`). No zombie risk even if the daemon exits immediately.
 
 ```python
-from mm_clikit import spawn_detached
+from mm_clikit import spawn_daemon
 
-pid = spawn_detached(["my-cli", "daemon", "--port", "8080"])
+pid = spawn_daemon(["my-cli", "daemon", "--port", "8080"])
 ```
 
 #### Daemon guard example
@@ -285,14 +285,14 @@ Combining the functions for a typical daemon start/stop pattern:
 
 ```python
 from pathlib import Path
-from mm_clikit import is_process_running, read_pid_file, spawn_detached, stop_process, write_pid_file
+from mm_clikit import is_process_running, read_pid_file, spawn_daemon, stop_process, write_pid_file
 
 pid_path = Path("/tmp/my-daemon.pid")
 
 def start():
     if is_process_running(pid_path, command_contains="my-daemon", remove_stale=True):
         fatal("daemon is already running")
-    pid = spawn_detached(["my-daemon", "serve"])
+    pid = spawn_daemon(["my-daemon", "serve"])
     # or write_pid_file(pid_path) from inside the daemon itself
 
 def stop():

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from mm_clikit.process import is_process_running, read_pid_file, spawn_detached, stop_process, write_pid_file
+from mm_clikit.process import is_process_running, read_pid_file, spawn_daemon, stop_process, write_pid_file
 
 
 def _dead_pid() -> int:
@@ -254,28 +254,28 @@ class TestStopProcess:
         assert elapsed < 2.0
 
 
-class TestSpawnDetached:
-    """Tests for spawn_detached."""
+class TestSpawnDaemon:
+    """Tests for spawn_daemon."""
 
     def test_returns_valid_pid(self, spawned_pids: list[int]) -> None:
         """Returns a positive integer PID."""
-        pid = spawn_detached(["sleep", "60"])
+        pid = spawn_daemon(["sleep", "60"])
         spawned_pids.append(pid)
         assert pid > 0
 
     def test_process_is_alive(self, spawned_pids: list[int]) -> None:
         """Spawned process is running."""
-        pid = spawn_detached(["sleep", "60"])
+        pid = spawn_daemon(["sleep", "60"])
         spawned_pids.append(pid)
         os.kill(pid, 0)  # should not raise
 
     def test_new_session(self, spawned_pids: list[int]) -> None:
         """Spawned process runs in a new session."""
-        pid = spawn_detached(["sleep", "60"])
+        pid = spawn_daemon(["sleep", "60"])
         spawned_pids.append(pid)
         assert os.getsid(pid) != os.getsid(os.getpid())
 
     def test_invalid_command_raises(self) -> None:
         """Raises FileNotFoundError for a nonexistent command."""
         with pytest.raises(FileNotFoundError):
-            spawn_detached(["nonexistent-cmd-xyz-12345"])
+            spawn_daemon(["nonexistent-cmd-xyz-12345"])

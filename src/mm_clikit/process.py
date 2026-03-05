@@ -112,21 +112,63 @@ def stop_process(pid: int, *, timeout: float = 3.0, poll_interval: float = 0.1, 
     return False
 
 
-def spawn_detached(args: list[str]) -> int:
-    """Launch a detached background process and return its PID.
+def spawn_daemon(args: list[str]) -> int:
+    """Launch a daemon process and return its PID.
 
-    The child runs in a new session with stdin/stdout/stderr redirected to /dev/null.
+    Uses double-fork so the daemon is adopted by init/launchd — no zombie risk even if
+    the daemon exits immediately (e.g. loses a lock-file race).
+    stdin/stdout/stderr are redirected to /dev/null.
 
     Args:
         args: Command and arguments (e.g. ``["my-cli", "daemon"]``).
 
+    Raises:
+        FileNotFoundError: If the command does not exist.
+
     """
-    # S603: args are caller-provided; this is a CLI utility library — callers are trusted
-    proc = subprocess.Popen(  # noqa: S603  # nosec B603
-        args,
-        start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-    )
-    return proc.pid
+    # pid_pipe: grandchild sends its PID; err_pipe: grandchild sends errno on exec failure.
+    # Both write-ends are CLOEXEC (Python default), so exec success → parent reads EOF on err_r.
+    pid_r, pid_w = os.pipe()
+    err_r, err_w = os.pipe()
+
+    child_pid = os.fork()
+    if child_pid > 0:
+        # Parent: read daemon PID and any exec error, then reap intermediate child.
+        os.close(pid_w)
+        os.close(err_w)
+        pid_data = b""
+        while chunk := os.read(pid_r, 32):
+            pid_data += chunk
+        os.close(pid_r)
+        err_data = b""
+        while chunk := os.read(err_r, 32):
+            err_data += chunk
+        os.close(err_r)
+        os.waitpid(child_pid, 0)
+        if err_data:
+            errno_val = int(err_data.strip())
+            raise OSError(errno_val, os.strerror(errno_val), args[0])
+        if not pid_data:
+            raise RuntimeError(f"spawn_daemon: failed to get daemon PID for {args[0]!r}")
+        return int(pid_data.strip())
+
+    # Intermediate child: fork again, then exit immediately so grandchild is adopted by init.
+    try:
+        os.close(pid_r)
+        os.close(err_r)
+        grandchild_pid = os.fork()
+        if grandchild_pid > 0:
+            os._exit(0)
+        # Grandchild: daemonize and exec.
+        os.setsid()
+        devnull = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(devnull, fd)
+        os.close(devnull)
+        os.write(pid_w, str(os.getpid()).encode())
+        os.close(pid_w)
+        os.execvp(args[0], args)  # noqa: S606  # nosec B606 — args are caller-provided; callers are trusted
+    except OSError as e:
+        with contextlib.suppress(Exception):
+            os.write(err_w, str(e.errno).encode())
+    os._exit(1)

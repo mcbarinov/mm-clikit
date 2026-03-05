@@ -1,6 +1,6 @@
 [project]
 name = "mm-clikit"
-version = "0.0.11"
+version = "0.0.12"
 description = "Shared CLI utilities library."
 keywords = []
 requires-python = ">=3.14"
@@ -18,8 +18,8 @@ dev = [
     "pre-commit~=4.5.1",
     "pytest~=9.0.2",
     "pytest-xdist~=3.8.0",
-    "ruff~=0.15.2",
-    "ty~=0.0.18",
+    "ruff~=0.15.4",
+    "ty~=0.0.20",
 ]
 
 [tool.mypy]

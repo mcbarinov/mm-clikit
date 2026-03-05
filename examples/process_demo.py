@@ -11,7 +11,7 @@ from mm_clikit import (
     is_process_running,
     print_plain,
     read_pid_file,
-    spawn_detached,
+    spawn_daemon,
     stop_process,
     write_pid_file,
 )
@@ -27,7 +27,7 @@ def start() -> None:
     """Start the background daemon."""
     if is_process_running(PID_PATH, command_contains=SCRIPT, remove_stale=True):
         fatal(f"daemon is already running (pid {read_pid_file(PID_PATH)})")
-    pid = spawn_detached([sys.executable, __file__, "_daemon"])
+    pid = spawn_daemon([sys.executable, __file__, "_daemon"])
     print_plain(f"daemon started (pid {pid})")
 
 
