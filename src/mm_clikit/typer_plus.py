@@ -293,13 +293,14 @@ class TyperPlus(Typer):
 
     def _setup_single_command_version(self) -> None:
         """For single-command mode: set command cls to inject --version at Click level."""
-        if len(self.registered_commands) != 1 or self.registered_groups:
+        package_name = self._package_name
+        if package_name is None or len(self.registered_commands) != 1 or self.registered_groups:
             return
         cmd_info = self.registered_commands[0]
         if cmd_info.callback is None:
             return
 
-        cmd_info.cls = _make_version_command_cls(self._package_name)  # type: ignore[arg-type]
+        cmd_info.cls = _make_version_command_cls(package_name)
         self._propagate_no_args_is_help(cmd_info)
 
     def _propagate_no_args_is_help(self, cmd_info: CommandInfo) -> None:
@@ -307,8 +308,10 @@ class TyperPlus(Typer):
         app_no_args = self.info.no_args_is_help
         if not (isinstance(app_no_args, bool) and app_no_args) or cmd_info.no_args_is_help:
             return
-
-        sig = inspect.signature(cmd_info.callback)  # type: ignore[arg-type]
+        callback = cmd_info.callback
+        if callback is None:
+            return
+        sig = inspect.signature(callback)
         has_required = any(
             p.default is inspect.Parameter.empty
             and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)

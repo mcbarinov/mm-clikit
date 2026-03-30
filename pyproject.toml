@@ -1,6 +1,6 @@
 [project]
 name = "mm-clikit"
-version = "0.0.12"
+version = "0.0.13"
 description = "Shared CLI utilities library."
 keywords = []
 requires-python = ">=3.14"
@@ -18,8 +18,8 @@ dev = [
     "pre-commit~=4.5.1",
     "pytest~=9.0.2",
     "pytest-xdist~=3.8.0",
-    "ruff~=0.15.4",
-    "ty~=0.0.20",
+    "ruff~=0.15.8",
+    "ty~=0.0.26",
 ]
 
 [tool.mypy]
@@ -74,6 +74,7 @@ python-version = "3.14"
 include = ["tests/**"]
 [tool.ty.overrides.rules]
 possibly-missing-attribute = "ignore"
+invalid-assignment = "ignore"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
