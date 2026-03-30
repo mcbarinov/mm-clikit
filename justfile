@@ -28,7 +28,7 @@ examples:
 
 audit:
     uv export --no-dev --all-extras --format requirements-txt --no-emit-project > requirements.txt
-    uv run pip-audit -r requirements.txt --disable-pip --ignore-vuln=CVE-2026-4539 # pygments 2.19.2  CVE-2026-4539
+    uv run pip-audit -r requirements.txt --disable-pip
     rm requirements.txt
     uv run bandit -q -r -c "pyproject.toml" src
 
