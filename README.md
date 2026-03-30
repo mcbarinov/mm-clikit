@@ -12,12 +12,14 @@ uv add mm-clikit
 
 ### TyperPlus
 
-Drop-in `Typer` replacement with automatic `--version`/`-V` and command aliases.
+Drop-in `Typer` replacement with automatic `--version`/`-V`, `--json`, command aliases, and error handling.
 
 Opinionated defaults (different from Typer):
 - `no_args_is_help=True` — shows help when invoked without arguments
 - `pretty_exceptions_enable=False` — disables Rich exception formatting
 - `hide_meta_options=True` — see [below](#clean-help-output)
+- `json_option=True` — auto-registers `--json` flag, see [below](#json-output-mode)
+- `error_handler` — catches `CliError` exceptions automatically, see [below](#error-handling)
 
 ```python
 from mm_clikit import TyperPlus
@@ -82,6 +84,72 @@ To disable this and show all options in `--help`:
 app = TyperPlus(package_name="my-app", hide_meta_options=False)
 ```
 
+#### JSON output mode
+
+A `--json` flag is auto-registered by default. Use `get_json_mode()` in commands
+to check whether JSON output was requested:
+
+```python
+from mm_clikit import TyperPlus, get_json_mode
+
+app = TyperPlus(package_name="my-app")
+
+@app.command("status")
+def status():
+    """Show status."""
+    if get_json_mode():
+        print('{"status": "ok"}')
+    else:
+        print("Status: ok")
+```
+
+To disable: `TyperPlus(json_option=False)`.
+
+#### Error handling
+
+Commands that raise `CliError` are caught automatically and formatted as
+JSON (when `--json` is active) or plain text:
+
+```python
+from mm_clikit import TyperPlus, CliError
+
+app = TyperPlus(package_name="my-app")
+
+@app.command("start")
+def start():
+    """Start the service."""
+    raise CliError("service not configured", error_code="NOT_CONFIGURED")
+```
+
+```
+$ my-app start
+Error: service not configured    # exit code 1
+
+$ my-app --json start
+{"ok": false, "error": "NOT_CONFIGURED", "message": "service not configured"}
+```
+
+Subclass `CliError` for domain-specific errors:
+
+```python
+class AppError(CliError):
+    """Domain error for my app."""
+
+raise AppError("not found", error_code="NOT_FOUND")
+```
+
+Custom error handler:
+
+```python
+def my_handler(error: CliError) -> NoReturn:
+    print_plain(f"[APP] {error.error_code}: {error}", file=sys.stderr)
+    raise typer.Exit(error.exit_code)
+
+app = TyperPlus(package_name="my-app", error_handler=my_handler)
+```
+
+To disable automatic error handling: `TyperPlus(error_handler=None)`.
+
 ### fatal
 
 Print a message to stdout and exit with code 1.
@@ -133,12 +201,14 @@ class Output(DualModeOutput):
 
 #### print_plain
 
-Print to stdout without formatting.
+Print without formatting. Defaults to stdout; pass `file=` for stderr or other streams.
 
 ```python
+import sys
 from mm_clikit import print_plain
 
 print_plain("hello", "world")
+print_plain("something went wrong", file=sys.stderr)
 ```
 
 #### print_json
@@ -309,6 +379,7 @@ Runnable examples in [`examples/`](examples/):
 
 - **single_command.py** — single-command mode with `--version`
 - **multi_command.py** — command aliases, group aliases, custom callback
+- **error_handling.py** — `CliError`, default and custom error handlers, `--json` error output
 - **output_showcase.py** — all output functions (`print_plain`, `print_json`, `print_table`, `print_toml`)
 - **toml_config.py** — `TomlConfig` with Pydantic validation
 - **process_demo.py** — daemon start/stop/status with PID files
@@ -316,6 +387,8 @@ Runnable examples in [`examples/`](examples/):
 ```bash
 uv run examples/multi_command.py --help
 uv run examples/single_command.py --version
+uv run examples/error_handling.py start
+uv run examples/error_handling.py --json start
 uv run examples/output_showcase.py table
 uv run examples/toml_config.py run --config examples/sample_config.toml
 uv run examples/process_demo.py start && uv run examples/process_demo.py status && uv run examples/process_demo.py stop

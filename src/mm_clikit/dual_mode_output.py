@@ -9,6 +9,8 @@ from typing import NoReturn
 import typer
 from rich.console import Console, RenderableType
 
+from .output import print_plain
+
 
 class DualModeOutput:
     """Base for CLI output handlers supporting JSON and display modes.
@@ -40,7 +42,7 @@ class DualModeOutput:
     def print_error_and_exit(self, code: str, message: str) -> NoReturn:
         """Print an error in JSON or display format and exit with code 1."""
         if self.json_mode:
-            print(json.dumps({"ok": False, "error": code, "message": message}))
+            print_plain(json.dumps({"ok": False, "error": code, "message": message}))
         else:
-            print(f"Error: {message}", file=sys.stderr)
+            print_plain(f"Error: {message}", file=sys.stderr)
         raise typer.Exit(1)

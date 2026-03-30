@@ -13,3 +13,4 @@ pip-wheel-metadata
 /dist
 /build
 .DS_Store
+requirements.txt

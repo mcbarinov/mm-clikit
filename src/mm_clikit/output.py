@@ -1,7 +1,8 @@
 """Output functions for formatted printing."""
 
+import sys
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, TextIO
 
 import rich
 import tomlkit
@@ -11,9 +12,15 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 
-def print_plain(*messages: object) -> None:
-    """Print to stdout without any formatting."""
-    print(*messages)  # noqa: T201 - printing is the function's purpose
+def print_plain(*messages: object, file: TextIO | None = None) -> None:
+    """Print without any formatting.
+
+    Args:
+        *messages: Values to print.
+        file: Output stream.  Defaults to ``sys.stdout`` when ``None``.
+
+    """
+    print(*messages, file=file or sys.stdout)
 
 
 def print_json(data: object, type_handlers: dict[type[Any], Callable[[Any], Any]] | None = None) -> None:
