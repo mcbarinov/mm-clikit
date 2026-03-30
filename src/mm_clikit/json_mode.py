@@ -12,5 +12,5 @@ def get_json_mode() -> bool:
     ctx = click.get_current_context(silent=True)
     if ctx is None:
         return False
-    result: bool = ctx.find_root().ensure_object(dict).get("_json_mode", False)
+    result: bool = ctx.find_root().meta.get("_json_mode", False)
     return result

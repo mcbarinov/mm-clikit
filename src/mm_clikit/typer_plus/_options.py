@@ -66,7 +66,7 @@ def _make_json_option() -> click.Option:
 
     def callback(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
         """Store json_mode flag in Click context."""
-        ctx.ensure_object(dict)["_json_mode"] = value
+        ctx.meta["_json_mode"] = value
 
     return click.Option(["--json"], is_flag=True, expose_value=False, callback=callback, help="Output as JSON.")
 
