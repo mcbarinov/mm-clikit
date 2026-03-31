@@ -286,7 +286,6 @@ from mm_clikit import SqliteDb
 def _migrate_v1(conn: sqlite3.Connection) -> None:
     """Create initial schema."""
     conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL) STRICT")
-    conn.commit()
 
 
 class Db(SqliteDb):
@@ -301,6 +300,9 @@ class Db(SqliteDb):
 
 Connection pragmas (hardcoded): `journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
 Row factory is `sqlite3.Row` (column access by name).
+
+Migrations must not call `commit()` — `SqliteDb` commits each migration with its version bump atomically.
+Use `conn.execute()`, not `conn.executescript()`.
 
 See [CLI Application Architecture Guide](docs/app-guide.md) for the full `db.py` pattern.
 

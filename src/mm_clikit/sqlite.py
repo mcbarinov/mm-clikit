@@ -13,6 +13,10 @@ class SqliteDb:
 
     Subclass and add domain-specific query/mutation methods.
     The connection is available as ``conn`` (with ``row_factory=sqlite3.Row``) for subclass use.
+
+    Migration functions receive a ``sqlite3.Connection`` and must NOT call ``commit()`` —
+    the base class commits each migration together with its ``user_version`` bump atomically.
+    Use ``conn.execute()`` for each statement (not ``conn.executescript()``, which does implicit commits).
     """
 
     def __init__(self, db_path: Path, migrations: tuple[Callable[[sqlite3.Connection], None], ...] = ()) -> None:
@@ -20,7 +24,8 @@ class SqliteDb:
 
         Args:
             db_path: Path to the SQLite database file (parent dirs created automatically).
-            migrations: Ordered migration functions. Each receives a ``sqlite3.Connection``.
+            migrations: Ordered migration functions. Each receives a ``sqlite3.Connection``
+                and must not call ``commit()``.
 
         """
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -43,4 +48,5 @@ class SqliteDb:
             if current_version < target_version:
                 migrate_fn(self.conn)
                 self.conn.execute(f"PRAGMA user_version = {target_version}")
+                self.conn.commit()
                 logger.info("Applied migration v%d (%s)", target_version, migrate_fn.__doc__)

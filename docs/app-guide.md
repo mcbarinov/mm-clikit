@@ -211,14 +211,18 @@ def _migrate_v1(conn: sqlite3.Connection) -> None:
             created_at INTEGER NOT NULL DEFAULT (unixepoch())
         ) STRICT
     """)
-    conn.commit()
+
+
+def _migrate_v2(conn: sqlite3.Connection) -> None:
+    """Add tags column."""
+    conn.execute("ALTER TABLE items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
 
 
 class Db(SqliteDb):
     """SQLite database access."""
 
     def __init__(self, db_path: Path) -> None:
-        super().__init__(db_path, migrations=(_migrate_v1,))
+        super().__init__(db_path, migrations=(_migrate_v1, _migrate_v2))
 
     def insert_item(self, name: str) -> int:
         """Insert an item and return its ID."""
@@ -232,8 +236,10 @@ class Db(SqliteDb):
         return [{"id": row["id"], "name": row["name"]} for row in rows]
 ```
 
-Add new migrations as `_migrate_v2`, `_migrate_v3`, etc. and append to the `migrations` tuple.
-Each migration function receives a `sqlite3.Connection` and should commit its own changes.
+Migration rules:
+- Do **not** call `commit()` — `SqliteDb` commits each migration together with its `user_version` bump atomically.
+- Use `conn.execute()` for each statement, **not** `conn.executescript()` (which does implicit commits and breaks atomicity).
+- Add new migrations as `_migrate_v2`, `_migrate_v3`, etc. and append to the `migrations` tuple.
 
 ---
 
