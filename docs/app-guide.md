@@ -190,7 +190,8 @@ Commands don't catch these — TyperPlus handles formatting and exit automatical
 
 ### db.py (optional)
 
-For apps that need local persistence. SQLite with WAL mode.
+For apps that need local persistence. Subclass `SqliteDb` from mm-clikit — it handles
+connection setup (WAL mode, busy timeout, foreign keys) and `PRAGMA user_version` migrations.
 
 ```python
 """SQLite data access layer."""
@@ -198,44 +199,41 @@ For apps that need local persistence. SQLite with WAL mode.
 import sqlite3
 from pathlib import Path
 
+from mm_clikit import SqliteDb
 
-class Db:
+
+def _migrate_v1(conn: sqlite3.Connection) -> None:
+    """Create initial schema."""
+    conn.execute("""
+        CREATE TABLE items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        ) STRICT
+    """)
+    conn.commit()
+
+
+class Db(SqliteDb):
     """SQLite database access."""
 
     def __init__(self, db_path: Path) -> None:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
-        self._conn.execute("PRAGMA journal_mode = WAL")
-        self._conn.execute("PRAGMA busy_timeout = 5000")
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        self._migrate()
+        super().__init__(db_path, migrations=(_migrate_v1,))
 
-    def close(self) -> None:
-        """Close the database connection."""
-        self._conn.close()
+    def insert_item(self, name: str) -> int:
+        """Insert an item and return its ID."""
+        cur = self.conn.execute("INSERT INTO items (name) VALUES (?)", (name,))
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
 
-    def _migrate(self) -> None:
-        """Run schema migrations based on user_version pragma."""
-        version = self._conn.execute("PRAGMA user_version").fetchone()[0]
-        migrations = (self._migration_001,)
-        for i, migration in enumerate(migrations[version:], start=version):
-            migration()
-            self._conn.execute(f"PRAGMA user_version = {i + 1}")
-
-    def _migration_001(self) -> None:
-        """Initial schema."""
-        self._conn.execute("""
-            CREATE TABLE items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                created_at INTEGER NOT NULL DEFAULT (unixepoch())
-            )
-        """)
-        self._conn.commit()
+    def fetch_all_items(self) -> list[dict]:
+        """Fetch all items as dicts."""
+        rows = self.conn.execute("SELECT id, name FROM items ORDER BY id").fetchall()
+        return [{"id": row["id"], "name": row["name"]} for row in rows]
 ```
 
-Migration system uses `PRAGMA user_version` — no external tools needed.
-Add new migrations as `_migration_002`, `_migration_003`, etc. and append to the `migrations` tuple.
+Add new migrations as `_migrate_v2`, `_migrate_v3`, etc. and append to the `migrations` tuple.
+Each migration function receives a `sqlite3.Connection` and should commit its own changes.
 
 ---
 

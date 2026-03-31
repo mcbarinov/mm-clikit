@@ -273,6 +273,37 @@ Loading methods:
 
 Both `load` and `load_or_exit` accept a `password` parameter for loading from password-protected zip archives.
 
+### SqliteDb
+
+SQLite base class with WAL mode, busy timeout, foreign keys, and `PRAGMA user_version` migrations.
+
+```python
+import sqlite3
+from pathlib import Path
+from mm_clikit import SqliteDb
+
+
+def _migrate_v1(conn: sqlite3.Connection) -> None:
+    """Create initial schema."""
+    conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL) STRICT")
+    conn.commit()
+
+
+class Db(SqliteDb):
+    def __init__(self, db_path: Path) -> None:
+        super().__init__(db_path, migrations=(_migrate_v1,))
+
+    def insert_item(self, name: str) -> int:
+        cur = self.conn.execute("INSERT INTO items (name) VALUES (?)", (name,))
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore[return-value]
+```
+
+Connection pragmas (hardcoded): `journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
+Row factory is `sqlite3.Row` (column access by name).
+
+See [CLI Application Architecture Guide](docs/app-guide.md) for the full `db.py` pattern.
+
 ### Process management
 
 Utilities for PID files, liveness checks, spawning, and stopping processes. Pure stdlib, no external dependencies.
