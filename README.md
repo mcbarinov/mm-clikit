@@ -373,6 +373,10 @@ def stop():
     pid_path.unlink(missing_ok=True)
 ```
 
+## Documentation
+
+- [CLI Application Architecture Guide](docs/app-guide.md) — architecture reference for building CLI apps with mm-clikit
+
 ## Examples
 
 Runnable examples in [`examples/`](examples/):

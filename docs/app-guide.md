@@ -7,27 +7,44 @@ Architecture reference for building CLI apps with [mm-clikit](../README.md).
 ```
 src/mb_<name>/
 ├── __init__.py
-├── cli.py              # TyperPlus app, callback, command registration
-├── service.py          # Service class + Context type alias
-├── config.py           # Frozen Pydantic Config
-├── errors.py           # AppError(CliError)
-├── output.py           # Output(DualModeOutput)
-├── db.py               # SQLite layer (optional)
-└── commands/           # One file per command
-    ├── __init__.py
-    ├── add.py
-    └── list.py
+├── config.py              # Frozen Pydantic Config
+├── errors.py              # AppError(CliError)
+├── service.py             # Service class — core business logic
+├── db.py                  # SQLite layer (optional)
+│
+├── cli/
+│   ├── __init__.py        # Re-exports app
+│   ├── app.py             # TyperPlus app, callback, command registration
+│   ├── context.py         # Context type alias
+│   ├── output.py          # Output(DualModeOutput)
+│   └── commands/          # One file per command
+│       ├── __init__.py
+│       ├── add.py
+│       └── list.py
 ```
+
+Core business logic lives flat in the package root.
+CLI adapter code lives in the `cli/` subfolder.
+Core has zero imports from `cli/` — the dependency is strictly one-way.
 
 ## Layer Diagram
 
 ```
-CLI (commands/)  →  Service (service.py)  →  Data (db.py)
-      ↕                    ↕
-  Output               AppError
+CLI (cli/commands/)  →  Service (service.py)  →  Data (db.py)
+       ↕                       ↕
+   Output                  AppError
 ```
 
 Commands never touch the DB directly. Business logic and validation live in the service layer.
+
+## Dependency Flow
+
+```
+cli/app.py  →  cli/commands/*  →  cli/context.py  →  service.py  →  db.py
+                     ↓                   ↓
+                cli/output.py        config.py
+                                     errors.py
+```
 
 ---
 
@@ -133,56 +150,16 @@ Data directory resolution order:
 The `cli_base_args()` method is optional — only needed if the app spawns background processes
 (daemons, workers) that must inherit the data directory.
 
-### output.py
-
-```python
-"""Structured output for CLI and JSON modes."""
-
-from mm_clikit import DualModeOutput
-from rich.table import Table
-
-
-class Output(DualModeOutput):
-    """Handles all CLI output in JSON or human-readable format."""
-
-    def print_item_added(self, item_id: int, name: str) -> None:
-        """Print item creation confirmation."""
-        self.output(
-            json_data={"id": item_id, "name": name},
-            display_data=f"Item #{item_id} created: {name}",
-        )
-
-    def print_items(self, items: list[dict]) -> None:
-        """Print item list."""
-        if not items:
-            self.output(json_data={"items": []}, display_data="No items.")
-            return
-        table = Table("ID", "Name")
-        for item in items:
-            table.add_row(str(item["id"]), item["name"])
-        self.output(json_data={"items": items}, display_data=table)
-```
-
-Every user-visible output goes through a dedicated `Output` method. Each method provides:
-- `json_data` — dict for `--json` mode (envelope: `{"ok": true, "data": {...}}`)
-- `display_data` — string or Rich renderable for normal mode
-
 ### service.py
 
 The service layer. All business logic and validation live here.
-Also defines the `Context` type alias for typed context access in commands.
 
 ```python
 """Core business logic."""
 
-from mm_clikit import AppContext
-
 from mb_<name>.config import Config
 from mb_<name>.db import Db
 from mb_<name>.errors import AppError
-from mb_<name>.output import Output
-
-Context = AppContext[Service, Output, Config]
 
 
 class Service:
@@ -204,83 +181,6 @@ class Service:
 
 Raise `AppError` for any validation or business rule violation.
 Commands don't catch these — TyperPlus handles formatting and exit automatically.
-
-### cli.py
-
-```python
-"""CLI entry point."""
-
-from pathlib import Path
-from typing import Annotated
-
-import typer
-from mm_clikit import AppContext, TyperPlus, get_json_mode, setup_logging
-
-from mb_<name>.commands.add import add
-from mb_<name>.commands.list import list_
-from mb_<name>.config import Config
-from mb_<name>.db import Db
-from mb_<name>.output import Output
-from mb_<name>.service import Service
-
-app = TyperPlus(package_name="mb-<name>")
-
-
-@app.callback()
-def main(
-    ctx: typer.Context,
-    *,
-    data_dir: Annotated[
-        Path | None,
-        typer.Option("--data-dir", help="Data directory. Env: MB_<NAME>_DATA_DIR."),
-    ] = None,
-) -> None:
-    """Short app description."""
-    cfg = Config.build(data_dir)
-    cfg.data_dir.mkdir(parents=True, exist_ok=True)
-    setup_logging("mb_<name>", cfg.log_path)
-    db = Db(cfg.db_path)
-    ctx.call_on_close(db.close)
-    ctx.obj = AppContext(svc=Service(db), out=Output(json_mode=get_json_mode()), cfg=cfg)
-
-
-app.command(aliases=["a"])(add)
-app.command(name="list", aliases=["l", "ls"])(list_)
-```
-
-The callback handles all initialization: config, logging, database, context.
-Resources that need cleanup use `ctx.call_on_close()`.
-
-TyperPlus provides automatically:
-- `--version` / `-V` flag
-- `--json` flag (access via `get_json_mode()` — never add a manual `--json` parameter)
-- `--help` / `--help-all`
-- `CliError` catch and formatting
-
-### commands/add.py
-
-```python
-"""Add a new item."""
-
-from typing import Annotated
-
-import typer
-from mm_clikit import use_context
-
-from mb_<name>.service import Context
-
-
-def add(
-    ctx: typer.Context,
-    name: Annotated[str, typer.Argument(help="Item name.")],
-) -> None:
-    """Create a new item."""
-    app = use_context(ctx, Context)
-    item_id = app.svc.add_item(name)
-    app.out.print_item_added(item_id, name)
-```
-
-Commands are thin — extract context, call service, call output. No try/except needed.
 
 ### db.py (optional)
 
@@ -333,12 +233,199 @@ Add new migrations as `_migration_002`, `_migration_003`, etc. and append to the
 
 ---
 
+## CLI Layer
+
+### cli/\_\_init\_\_.py
+
+```python
+"""CLI entry point."""
+
+from mb_<name>.cli.app import app as app
+```
+
+Re-exports `app` so the pyproject.toml entry point is `mb_<name>.cli:app`.
+
+### cli/context.py
+
+```python
+"""Typed CLI context."""
+
+from mm_clikit import AppContext
+
+from mb_<name>.cli.output import Output
+from mb_<name>.config import Config
+from mb_<name>.service import Service
+
+Context = AppContext[Service, Output, Config]
+```
+
+Separate file to avoid circular imports (app.py imports commands, commands import Context).
+
+### cli/output.py
+
+```python
+"""Structured output for CLI and JSON modes."""
+
+from mm_clikit import DualModeOutput
+from rich.table import Table
+
+
+class Output(DualModeOutput):
+    """Handles all CLI output in JSON or human-readable format."""
+
+    def print_item_added(self, item_id: int, name: str) -> None:
+        """Print item creation confirmation."""
+        self.output(
+            json_data={"id": item_id, "name": name},
+            display_data=f"Item #{item_id} created: {name}",
+        )
+
+    def print_items(self, items: list[dict]) -> None:
+        """Print item list."""
+        if not items:
+            self.output(json_data={"items": []}, display_data="No items.")
+            return
+        table = Table("ID", "Name")
+        for item in items:
+            table.add_row(str(item["id"]), item["name"])
+        self.output(json_data={"items": items}, display_data=table)
+```
+
+Every user-visible output goes through a dedicated `Output` method. Each method provides:
+- `json_data` — dict for `--json` mode (envelope: `{"ok": true, "data": {...}}`)
+- `display_data` — string or Rich renderable for normal mode
+
+### cli/app.py
+
+```python
+"""CLI app definition and initialization."""
+
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from mm_clikit import AppContext, TyperPlus, get_json_mode, setup_logging
+
+from mb_<name>.cli.commands.add import add
+from mb_<name>.cli.commands.list import list_
+from mb_<name>.cli.output import Output
+from mb_<name>.config import Config
+from mb_<name>.db import Db
+from mb_<name>.service import Service
+
+app = TyperPlus(package_name="mb-<name>")
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    *,
+    data_dir: Annotated[
+        Path | None,
+        typer.Option("--data-dir", help="Data directory. Env: MB_<NAME>_DATA_DIR."),
+    ] = None,
+) -> None:
+    """Short app description."""
+    cfg = Config.build(data_dir)
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging("mb_<name>", cfg.log_path)
+    db = Db(cfg.db_path)
+    ctx.call_on_close(db.close)
+    ctx.obj = AppContext(svc=Service(db), out=Output(json_mode=get_json_mode()), cfg=cfg)
+
+
+app.command(aliases=["a"])(add)
+app.command(name="list", aliases=["l", "ls"])(list_)
+```
+
+The callback handles all initialization: config, logging, database, context.
+Resources that need cleanup use `ctx.call_on_close()`.
+
+TyperPlus provides automatically:
+- `--version` / `-V` flag
+- `--json` flag (access via `get_json_mode()` — never add a manual `--json` parameter)
+- `--help` / `--help-all`
+- `CliError` catch and formatting
+
+### cli/commands/add.py
+
+```python
+"""Add a new item."""
+
+from typing import Annotated
+
+import typer
+from mm_clikit import use_context
+
+from mb_<name>.cli.context import Context
+
+
+def add(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Item name.")],
+) -> None:
+    """Create a new item."""
+    app = use_context(ctx, Context)
+    item_id = app.svc.add_item(name)
+    app.out.print_item_added(item_id, name)
+```
+
+Commands are thin — extract context, call service, call output. No try/except needed.
+
+---
+
+## Scaling Up
+
+As the project grows, organize core logic into domain sub-packages:
+
+```
+src/mb_<name>/
+├── config.py
+├── errors.py
+├── services/              # Multiple service classes
+│   ├── __init__.py
+│   ├── user_service.py
+│   └── order_service.py
+├── db/                    # Multiple DB access classes
+│   ├── __init__.py
+│   ├── user_db.py
+│   └── order_db.py
+├── models/                # Shared data models
+│   ├── __init__.py
+│   └── ...
+├── cli/
+│   └── ...
+```
+
+The `cli/` structure stays the same. Only the core grows.
+
+## Testability
+
+Core modules (`service.py`, `db.py`, etc.) can be imported and tested directly — no CLI involved:
+
+```python
+from mb_<name>.service import Service
+from mb_<name>.db import Db
+
+db = Db(tmp_path / "test.db")
+svc = Service(db)
+item_id = svc.add_item("test")
+assert svc.list_items() == [{"id": item_id, "name": "test"}]
+```
+
+The CLI is just one adapter over the core. Future adapters (web API, telegram bot) would sit alongside `cli/` as separate sub-packages, all using the same core.
+
+---
+
 ## Rules Summary
 
-1. **Layers:** `commands/` → `service.py` → `db.py`. Commands never touch the DB directly.
-2. **Errors:** `AppError(CliError)` with `(code, message)`. Raise from service. TyperPlus catches automatically.
-3. **Output:** All user output via `Output(DualModeOutput)`. One method per operation, both `json_data` and `display_data`.
-4. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
-5. **Context:** `AppContext` from mm-clikit stored in `ctx.obj`. Type alias `Context = AppContext[Service, Output, Config]` in `service.py`. Extracted with `use_context(ctx, Context)`.
-6. **JSON mode:** Via TyperPlus `--json` flag + `get_json_mode()`. Never add a manual `--json` parameter.
-7. **Logging:** `setup_logging(logger_name, log_path)` from mm-clikit, called in the callback.
+1. **Structure:** Core logic flat in package root. CLI adapter in `cli/` subfolder.
+2. **Dependencies:** One-way only: `cli/` → core. Core never imports from `cli/`.
+3. **Layers:** `cli/commands/` → `service.py` → `db.py`. Commands never touch the DB directly.
+4. **Errors:** `AppError(CliError)` with `(code, message)`. Raise from service. TyperPlus catches automatically.
+5. **Output:** All user output via `Output(DualModeOutput)` in `cli/output.py`. One method per operation, both `json_data` and `display_data`.
+6. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
+7. **Context:** Type alias `Context = AppContext[Service, Output, Config]` in `cli/context.py`. Extracted with `use_context(ctx, Context)`.
+8. **JSON mode:** Via TyperPlus `--json` flag + `get_json_mode()`. Never add a manual `--json` parameter.
+9. **Logging:** `setup_logging(logger_name, log_path)` from mm-clikit, called in the callback.
+10. **Entry point:** `mb_<name>.cli:app` in pyproject.toml (via `cli/__init__.py` re-export).
