@@ -169,8 +169,9 @@ from mb_<name>.errors import AppError
 class Service:
     """Main application service."""
 
-    def __init__(self, db: Db) -> None:
+    def __init__(self, db: Db, cfg: Config) -> None:
         self._db = db
+        self._cfg = cfg
 
     def add_item(self, name: str) -> int:
         """Create an item. Returns the new ID."""
@@ -335,7 +336,7 @@ def main(
     setup_logging("mb_<name>", cfg.log_path)
     db = Db(cfg.db_path)
     ctx.call_on_close(db.close)
-    ctx.obj = AppContext(svc=Service(db), out=Output(), cfg=cfg)
+    ctx.obj = AppContext(svc=Service(db, cfg), out=Output(), cfg=cfg)
 
 
 app.command(aliases=["a"])(add)
