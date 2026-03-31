@@ -15,7 +15,7 @@ src/mb_<name>/
 ├── cli/
 │   ├── __init__.py        # Re-exports app
 │   ├── app.py             # TyperPlus app, callback, command registration
-│   ├── context.py         # Context type alias
+│   ├── context.py         # Typed use_context()
 │   ├── output.py          # Output(DualModeOutput)
 │   └── commands/          # One file per command
 │       ├── __init__.py
@@ -255,16 +255,21 @@ Re-exports `app` so the pyproject.toml entry point is `mb_<name>.cli:app`.
 ```python
 """Typed CLI context."""
 
-from mm_clikit import AppContext
+import typer
+from mm_clikit import AppContext, use_context as _use_context
 
 from mb_<name>.cli.output import Output
 from mb_<name>.config import Config
 from mb_<name>.service import Service
 
-Context = AppContext[Service, Output, Config]
+
+def use_context(ctx: typer.Context) -> AppContext[Service, Output, Config]:
+    """Extract typed app context from Typer context."""
+    return _use_context(ctx, AppContext[Service, Output, Config])
 ```
 
-Separate file to avoid circular imports (app.py imports commands, commands import Context).
+Pre-typed wrapper over `mm_clikit.use_context`. Commands import only this function — one import
+instead of two. Separate file to avoid circular imports (app.py imports commands, commands import use_context).
 
 ### cli/output.py
 
@@ -360,9 +365,8 @@ TyperPlus provides automatically:
 from typing import Annotated
 
 import typer
-from mm_clikit import use_context
 
-from mb_<name>.cli.context import Context
+from mb_<name>.cli.context import use_context
 
 
 def add(
@@ -370,7 +374,7 @@ def add(
     name: Annotated[str, typer.Argument(help="Item name.")],
 ) -> None:
     """Create a new item."""
-    app = use_context(ctx, Context)
+    app = use_context(ctx)
     item_id = app.svc.add_item(name)
     app.out.print_item_added(item_id, name)
 ```
@@ -430,7 +434,7 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 4. **Errors:** `AppError(CliError)` with `(code, message)`. Raise from service. TyperPlus catches automatically.
 5. **Output:** All user output via `Output(DualModeOutput)` in `cli/output.py`. One method per operation, both `json_data` and `display_data`.
 6. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
-7. **Context:** Type alias `Context = AppContext[Service, Output, Config]` in `cli/context.py`. Extracted with `use_context(ctx, Context)`.
+7. **Context:** Pre-typed `use_context()` in `cli/context.py`. Commands call `use_context(ctx)` — one import, fully typed.
 8. **JSON mode:** Via TyperPlus `--json` flag. `DualModeOutput` reads it automatically. Never add a manual `--json` parameter.
 9. **Logging:** `setup_logging(logger_name, log_path)` from mm-clikit, called in the callback.
 10. **Entry point:** `mb_<name>.cli:app` in pyproject.toml (via `cli/__init__.py` re-export).
