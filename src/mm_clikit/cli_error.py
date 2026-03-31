@@ -8,17 +8,17 @@ class CliError(Exception):
 
         class PomodoroError(CliError): ...
 
-        raise PomodoroError("Timer not running", error_code="NOT_RUNNING")
+        raise PomodoroError("Timer not running", "NOT_RUNNING")
 
     Args:
         message: Human-readable error description (becomes ``str(error)``).
-        error_code: Machine-readable error code for JSON output.
+        code: Machine-readable error code for JSON output.
         exit_code: Process exit code.
 
     """
 
-    def __init__(self, message: str, *, error_code: str = "ERROR", exit_code: int = 1) -> None:
+    def __init__(self, message: str, code: str = "ERROR", *, exit_code: int = 1) -> None:
         """Initialize with a human-readable message and machine-readable code."""
         super().__init__(message)
-        self.error_code = error_code
+        self.code = code
         self.exit_code = exit_code

@@ -35,14 +35,14 @@ def start(
 ) -> None:
     """Start a service (raises AppError when name is missing)."""
     if name is None:
-        raise AppError("service name is required", error_code="NAME_REQUIRED")
+        raise AppError("service name is required", "NAME_REQUIRED")
     print_plain(f"Started: {name}")
 
 
 @app.command()
 def stop() -> None:
     """Stop a service (raises AppError with custom exit code)."""
-    raise AppError("service not running", error_code="NOT_RUNNING", exit_code=2)
+    raise AppError("service not running", "NOT_RUNNING", exit_code=2)
 
 
 # --- Custom error handler ---
@@ -50,7 +50,7 @@ def stop() -> None:
 
 def _custom_handler(error: CliError) -> NoReturn:
     """Print error with a prefix to stderr."""
-    print_plain(f"[APP] {error.error_code}: {error}", file=sys.stderr)
+    print_plain(f"[APP] {error.code}: {error}", file=sys.stderr)
     raise typer.Exit(error.exit_code)
 
 
@@ -60,7 +60,7 @@ custom_app = TyperPlus(error_handler=_custom_handler)
 @custom_app.command()
 def run() -> None:
     """Run something (uses custom error handler)."""
-    raise AppError("something went wrong", error_code="FAILURE")
+    raise AppError("something went wrong", "FAILURE")
 
 
 app.add_typer(custom_app, name="custom")

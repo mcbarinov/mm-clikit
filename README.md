@@ -118,7 +118,7 @@ app = TyperPlus(package_name="my-app")
 @app.command("start")
 def start():
     """Start the service."""
-    raise CliError("service not configured", error_code="NOT_CONFIGURED")
+    raise CliError("service not configured", "NOT_CONFIGURED")
 ```
 
 ```
@@ -135,14 +135,14 @@ Subclass `CliError` for domain-specific errors:
 class AppError(CliError):
     """Domain error for my app."""
 
-raise AppError("not found", error_code="NOT_FOUND")
+raise AppError("not found", "NOT_FOUND")
 ```
 
 Custom error handler:
 
 ```python
 def my_handler(error: CliError) -> NoReturn:
-    print_plain(f"[APP] {error.error_code}: {error}", file=sys.stderr)
+    print_plain(f"[APP] {error.code}: {error}", file=sys.stderr)
     raise typer.Exit(error.exit_code)
 
 app = TyperPlus(package_name="my-app", error_handler=my_handler)

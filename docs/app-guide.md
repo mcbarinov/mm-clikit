@@ -8,7 +8,6 @@ Architecture reference for building CLI apps with [mm-clikit](../README.md).
 src/mb_<name>/
 ├── __init__.py
 ├── config.py              # Frozen Pydantic Config
-├── errors.py              # AppError(CliError)
 ├── service.py             # Service class — core business logic
 ├── db.py                  # SQLite layer (optional)
 │
@@ -32,7 +31,7 @@ Core has zero imports from `cli/` — the dependency is strictly one-way.
 ```
 CLI (cli/commands/)  →  Service (service.py)  →  Data (db.py)
        ↕                       ↕
-   Output                  AppError
+   Output                  CliError
 ```
 
 Commands never touch the DB directly. Business logic and validation live in the service layer.
@@ -43,36 +42,37 @@ Commands never touch the DB directly. Business logic and validation live in the 
 cli/app.py  →  cli/commands/*  →  cli/context.py  →  service.py  →  db.py
                      ↓                   ↓
                 cli/output.py        config.py
-                                     errors.py
 ```
 
 ---
 
 ## File-by-File Reference
 
-### errors.py
+### Errors
+
+Use `CliError` from mm-clikit directly — no wrapper needed:
 
 ```python
-"""Application-level errors."""
-
 from mm_clikit import CliError
 
-
-class AppError(CliError):
-    """Application error with machine-readable code.
-
-    Caught automatically by TyperPlus — formats as JSON or plain text and exits.
-    """
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message, error_code=code)
+raise CliError("Stash is locked.", "LOCKED")
+raise CliError("Name cannot be empty.", "EMPTY_NAME")
 ```
 
 Use UPPER_SNAKE_CASE for error codes (e.g. `NOT_FOUND`, `ALREADY_EXISTS`, `EMPTY_NAME`).
 
-**To exit with a formatted error message, raise `AppError`.** TyperPlus catches it and outputs
+**To exit with a formatted error message, raise `CliError`.** TyperPlus catches it and outputs
 the error in the correct format (JSON envelope with `--json`, plain text otherwise) and exits
-with code 1. Never call `sys.exit()` or `typer.Exit()` for error reporting — always raise `AppError`.
+with code 1. Never call `sys.exit()` or `typer.Exit()` for error reporting — always raise `CliError`.
+
+If you need a project-specific error class, subclass `CliError` — no `__init__` override required:
+
+```python
+class AppError(CliError):
+    """Domain error for my app."""
+
+raise AppError("not found", "NOT_FOUND")
+```
 
 ### config.py
 
@@ -161,9 +161,10 @@ The service layer. All business logic and validation live here.
 ```python
 """Core business logic."""
 
+from mm_clikit import CliError
+
 from mb_<name>.config import Config
 from mb_<name>.db import Db
-from mb_<name>.errors import AppError
 
 
 class Service:
@@ -176,7 +177,7 @@ class Service:
     def add_item(self, name: str) -> int:
         """Create an item. Returns the new ID."""
         if not name.strip():
-            raise AppError("EMPTY_NAME", "Name cannot be empty.")
+            raise CliError("Name cannot be empty.", "EMPTY_NAME")
         return self._db.insert_item(name.strip())
 
     def list_items(self) -> list[dict]:
@@ -184,7 +185,7 @@ class Service:
         return self._db.fetch_all_items()
 ```
 
-Raise `AppError` for any validation or business rule violation.
+Raise `CliError` for any validation or business rule violation.
 Commands don't catch these — TyperPlus handles formatting and exit automatically.
 
 ### db.py (optional)
@@ -390,7 +391,6 @@ As the project grows, organize core logic into domain sub-packages:
 ```
 src/mb_<name>/
 ├── config.py
-├── errors.py
 ├── services/              # Multiple service classes
 │   ├── __init__.py
 │   ├── user_service.py
@@ -431,7 +431,7 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 1. **Structure:** Core logic flat in package root. CLI adapter in `cli/` subfolder.
 2. **Dependencies:** One-way only: `cli/` → core. Core never imports from `cli/`.
 3. **Layers:** `cli/commands/` → `service.py` → `db.py`. Commands never touch the DB directly.
-4. **Errors:** `AppError(CliError)` with `(code, message)`. Raise from service. TyperPlus catches automatically.
+4. **Errors:** `CliError(message, code)` from mm-clikit. Raise from service. TyperPlus catches automatically.
 5. **Output:** All user output via `Output(DualModeOutput)` in `cli/output.py`. One method per operation, both `json_data` and `display_data`.
 6. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
 7. **Context:** Pre-typed `use_context()` in `cli/context.py`. Commands call `use_context(ctx)` — one import, fully typed.
