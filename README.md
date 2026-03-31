@@ -163,6 +163,7 @@ fatal("something went wrong")
 ### DualModeOutput
 
 Base class for CLI output handlers that support both JSON and display modes.
+Reads `--json` flag automatically via `get_json_mode()` — no constructor arguments needed.
 Subclass it and add domain-specific methods that prepare `json_data` + `display_data` and delegate to `output`.
 
 ```python
@@ -172,30 +173,16 @@ class Output(DualModeOutput):
     def item_created(self, item_id: int, name: str) -> None:
         self.output(json_data={"id": item_id, "name": name}, display_data=f"Created: {name}")
 
-out = Output(json_mode=False)
-out.item_created(1, "my-item")       # prints: Created: my-item
-
-out = Output(json_mode=True)
-out.item_created(1, "my-item")       # prints: {"ok": true, "data": {"id": 1, "name": "my-item"}}
-
-out.print_error_and_exit("NOT_FOUND", "item not found")
-# JSON mode    → stdout: {"ok": false, "error": "NOT_FOUND", "message": "item not found"}
-# Display mode → stderr: Error: item not found
-# Both exit with code 1
-```
-
-The `display_data` parameter accepts any Rich renderable — tables, panels, syntax blocks, or plain strings:
-
-```python
-from rich.table import Table
-
-class Output(DualModeOutput):
     def show_items(self, items: list[dict]) -> None:
         table = Table("ID", "Name")
         for item in items:
             table.add_row(str(item["id"]), item["name"])
         self.output(json_data={"items": items}, display_data=table)
 ```
+
+The `display_data` parameter accepts any Rich renderable — tables, panels, syntax blocks, or plain strings.
+
+For errors, use `CliError` (or a subclass) — TyperPlus catches and formats them automatically in both JSON and display modes. See [Error handling](#error-handling).
 
 ### Output functions
 

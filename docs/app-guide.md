@@ -70,6 +70,10 @@ class AppError(CliError):
 
 Use UPPER_SNAKE_CASE for error codes (e.g. `NOT_FOUND`, `ALREADY_EXISTS`, `EMPTY_NAME`).
 
+**To exit with a formatted error message, raise `AppError`.** TyperPlus catches it and outputs
+the error in the correct format (JSON envelope with `--json`, plain text otherwise) and exits
+with code 1. Never call `sys.exit()` or `typer.Exit()` for error reporting — always raise `AppError`.
+
 ### config.py
 
 ```python
@@ -304,7 +308,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from mm_clikit import AppContext, TyperPlus, get_json_mode, setup_logging
+from mm_clikit import AppContext, TyperPlus, setup_logging
 
 from mb_<name>.cli.commands.add import add
 from mb_<name>.cli.commands.list import list_
@@ -331,7 +335,7 @@ def main(
     setup_logging("mb_<name>", cfg.log_path)
     db = Db(cfg.db_path)
     ctx.call_on_close(db.close)
-    ctx.obj = AppContext(svc=Service(db), out=Output(json_mode=get_json_mode()), cfg=cfg)
+    ctx.obj = AppContext(svc=Service(db), out=Output(), cfg=cfg)
 
 
 app.command(aliases=["a"])(add)
@@ -343,7 +347,7 @@ Resources that need cleanup use `ctx.call_on_close()`.
 
 TyperPlus provides automatically:
 - `--version` / `-V` flag
-- `--json` flag (access via `get_json_mode()` — never add a manual `--json` parameter)
+- `--json` flag (`DualModeOutput` reads it automatically — never add a manual `--json` parameter)
 - `--help` / `--help-all`
 - `CliError` catch and formatting
 
@@ -426,6 +430,6 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 5. **Output:** All user output via `Output(DualModeOutput)` in `cli/output.py`. One method per operation, both `json_data` and `display_data`.
 6. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
 7. **Context:** Type alias `Context = AppContext[Service, Output, Config]` in `cli/context.py`. Extracted with `use_context(ctx, Context)`.
-8. **JSON mode:** Via TyperPlus `--json` flag + `get_json_mode()`. Never add a manual `--json` parameter.
+8. **JSON mode:** Via TyperPlus `--json` flag. `DualModeOutput` reads it automatically. Never add a manual `--json` parameter.
 9. **Logging:** `setup_logging(logger_name, log_path)` from mm-clikit, called in the callback.
 10. **Entry point:** `mb_<name>.cli:app` in pyproject.toml (via `cli/__init__.py` re-export).

@@ -3,13 +3,10 @@
 # ruff: noqa: T201 -- output layer
 
 import json
-import sys
-from typing import NoReturn
 
-import typer
 from rich.console import Console, RenderableType
 
-from .output import print_plain
+from .json_mode import get_json_mode
 
 
 class DualModeOutput:
@@ -19,18 +16,16 @@ class DualModeOutput:
     Display mode outputs human-readable content: plain strings, Rich tables,
     panels, syntax-highlighted blocks, or any ``RenderableType``.
 
+    Reads ``--json`` flag automatically via ``get_json_mode()`` — no constructor
+    arguments needed.
+
     Subclass and add domain-specific methods that prepare ``json_data`` +
     ``display_data`` and delegate to ``output``.
     """
 
-    def __init__(self, *, json_mode: bool) -> None:
-        """Initialize output handler.
-
-        Args:
-            json_mode: If True, output JSON envelopes; otherwise display-formatted output.
-
-        """
-        self.json_mode = json_mode
+    def __init__(self) -> None:
+        """Initialize output handler. Reads --json flag from Click context."""
+        self.json_mode = get_json_mode()
 
     def output(self, *, json_data: dict[str, object], display_data: RenderableType) -> None:
         """Output a result in JSON or display format."""
@@ -38,11 +33,3 @@ class DualModeOutput:
             print(json.dumps({"ok": True, "data": json_data}))
         else:
             Console().print(display_data)
-
-    def print_error_and_exit(self, code: str, message: str) -> NoReturn:
-        """Print an error in JSON or display format and exit with code 1."""
-        if self.json_mode:
-            print_plain(json.dumps({"ok": False, "error": code, "message": message}))
-        else:
-            print_plain(f"Error: {message}", file=sys.stderr)
-        raise typer.Exit(1)
