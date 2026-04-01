@@ -2,10 +2,39 @@
 
 import logging
 import sqlite3
+from abc import abstractmethod
 from collections.abc import Callable
 from pathlib import Path
+from typing import Self
+
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class SqliteRow(BaseModel):
+    """Base class for typed SQLite row models.
+
+    Subclass and implement :meth:`from_row` to convert ``sqlite3.Row`` objects
+    into validated Pydantic models.
+
+    Example::
+
+        class Item(SqliteRow):
+            id: int
+            name: str
+
+            @classmethod
+            def from_row(cls, row: sqlite3.Row) -> Self:
+                return cls(id=row["id"], name=row["name"])
+
+    """
+
+    @classmethod
+    @abstractmethod
+    def from_row(cls, row: sqlite3.Row) -> Self:
+        """Create an instance from a sqlite3.Row."""
+        ...
 
 
 class SqliteDb:

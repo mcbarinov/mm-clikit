@@ -1,8 +1,8 @@
 """Shared CLI utilities library."""
 
-from .app_context import AppContext as AppContext
-from .app_context import use_context as use_context
 from .cli_error import CliError as CliError
+from .core_context import CoreContext as CoreContext
+from .core_context import use_context as use_context
 from .dual_mode_output import DualModeOutput as DualModeOutput
 from .json_mode import get_json_mode as get_json_mode
 from .logging import setup_logging as setup_logging
@@ -16,6 +16,7 @@ from .process import spawn_daemon as spawn_daemon
 from .process import stop_process as stop_process
 from .process import write_pid_file as write_pid_file
 from .sqlite import SqliteDb as SqliteDb
+from .sqlite import SqliteRow as SqliteRow
 from .toml_config import TomlConfig as TomlConfig
 from .typer_plus import TyperPlus as TyperPlus
 from .utils import fatal as fatal

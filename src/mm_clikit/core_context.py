@@ -1,26 +1,25 @@
-"""Generic application context for CLI apps built on TyperPlus."""
-
-from dataclasses import dataclass
+"""Generic core context for CLI apps built on TyperPlus."""
 
 import typer
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True, slots=True)
-class AppContext[SvcT, OutT, CfgT]:
+class CoreContext[CoreT, OutT](BaseModel):
     """Shared application state passed through Typer context.
 
-    Generic over service, output, and config types.
+    Generic over core (composition root) and output types.
     Stored in ``ctx.obj`` by the CLI callback, extracted in commands via :func:`use_context`.
 
     Consumer defines a type alias::
 
-        Context = AppContext[Service, Output, Config]
+        Context = CoreContext[Core, Output]
 
     """
 
-    svc: SvcT
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    core: CoreT
     out: OutT
-    cfg: CfgT
 
 
 def use_context[T](ctx: typer.Context, _context_type: type[T]) -> T:
