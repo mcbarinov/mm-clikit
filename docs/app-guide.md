@@ -25,6 +25,11 @@ src/mb_<name>/
 │       ├── add.py
 │       └── list.py
 │
+├── tui/                   # TUI adapter (optional, uses Core)
+│   ├── __init__.py
+│   ├── app.py             # Textual App subclass
+│   └── screens/           # App-specific screens
+│       └── ...
 ├── daemon.py              # Background daemon (optional, uses Core)
 └── tray.py                # Menu bar / system tray UI (optional, uses Core)
 ```

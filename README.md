@@ -306,6 +306,88 @@ Use `conn.execute()`, not `conn.executescript()`.
 
 See [CLI Application Architecture Guide](docs/app-guide.md) for the full `db.py` pattern.
 
+### TUI modal screens
+
+Reusable [Textual](https://textual.textualize.io/) modal screens for common TUI interactions.
+Each screen carries its own CSS via `DEFAULT_CSS` — no external stylesheet needed.
+
+#### ModalConfirmScreen
+
+Yes/no confirmation dialog. Returns `True` on confirm, `False` on cancel.
+
+```python
+from mm_clikit import ModalConfirmScreen
+
+# Inside a Textual App:
+self.push_screen(ModalConfirmScreen("Delete this item?"), self._on_confirm)
+
+def _on_confirm(self, result: bool | None) -> None:
+    if result:
+        ...  # confirmed
+```
+
+Keybinds: `y` = yes, `n` / `Escape` = no.
+
+#### ModalInputScreen
+
+Single-line text input dialog. Returns the stripped string on Enter, `None` on Escape.
+
+```python
+from mm_clikit import ModalInputScreen
+
+self.push_screen(
+    ModalInputScreen("Enter name", "default value", placeholder="Type here..."),
+    self._on_input,
+)
+
+def _on_input(self, result: str | None) -> None:
+    if result is not None:
+        ...  # use result
+```
+
+Parameters:
+- `title` — header text
+- `value` — pre-filled value (default `""`)
+- `placeholder` — input placeholder
+- `allow_empty` — when `True`, submitting empty input is valid
+
+#### ModalTextAreaScreen
+
+Full-screen multi-line text editor. Returns text on Ctrl+S, `None` on Escape.
+
+```python
+from mm_clikit import ModalTextAreaScreen
+
+self.push_screen(
+    ModalTextAreaScreen("Edit description", "existing text"),
+    self._on_edit,
+)
+
+def _on_edit(self, result: str | None) -> None:
+    if result is not None:
+        ...  # use result
+```
+
+#### ModalListPickerScreen
+
+Searchable list picker with live text filtering. Returns the selected item string,
+`""` for the empty option, or `None` on cancel.
+
+```python
+from mm_clikit import ModalListPickerScreen
+
+self.push_screen(
+    ModalListPickerScreen(
+        items=["Python", "Rust", "Go"],
+        title="Pick a language",
+        current="Rust",          # pre-highlighted
+        empty_label="Any",       # first option; None to hide
+        item_labels={"Go": "Go (golang)"},  # optional display labels
+    ),
+    self._on_pick,
+)
+```
+
 ### Process management
 
 Utilities for PID files, liveness checks, spawning, and stopping processes. Pure stdlib, no external dependencies.
@@ -406,6 +488,7 @@ Runnable examples in [`examples/`](examples/):
 - **error_handling.py** — `CliError`, default and custom error handlers, `--json` error output
 - **output_showcase.py** — all output functions (`print_plain`, `print_json`, `print_table`, `print_toml`)
 - **toml_config.py** — `TomlConfig` with Pydantic validation
+- **tui.py** — interactive TUI modal screens showcase (confirm, input, text area, list picker)
 - **process_demo.py** — daemon start/stop/status with PID files
 
 ```bash
@@ -415,5 +498,6 @@ uv run examples/error_handling.py start
 uv run examples/error_handling.py --json start
 uv run examples/output_showcase.py table
 uv run examples/toml_config.py run --config examples/sample_config.toml
+uv run examples/tui.py
 uv run examples/process_demo.py start && uv run examples/process_demo.py status && uv run examples/process_demo.py stop
 ```
