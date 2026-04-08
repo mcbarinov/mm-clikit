@@ -6,6 +6,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
+from textual.events import Key
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, OptionList
 from textual.widgets.option_list import Option
@@ -61,13 +62,13 @@ class ModalListPickerScreen(ModalScreen[str | None]):
         """Build the picker with search input and option list."""
         with Vertical(classes="modal-dialog"):
             yield Label(f"[bold]{self._title}[/]")
-            yield Input(placeholder="Type to filter...", classes="modal-picker-input")
+            yield Input(placeholder="Type to filter...", classes="modal-picker-input", select_on_focus=False)
             yield OptionList(classes="modal-picker-list")
 
     def on_mount(self) -> None:
-        """Populate list and focus the input."""
+        """Populate list and focus the option list for immediate arrow navigation."""
         self._rebuild_options()
-        self.query_one(Input).focus()
+        self.query_one(OptionList).focus()
 
     def _rebuild_options(self, query: str = "") -> None:
         """Rebuild the option list based on the search query."""
@@ -99,6 +100,38 @@ class ModalListPickerScreen(ModalScreen[str | None]):
             option_list.highlighted = 0
         else:
             option_list.highlighted = 0
+
+    def on_key(self, event: Key) -> None:
+        """Route keystrokes between Input and OptionList based on focus context."""
+        input_widget = self.query_one(Input)
+        option_list = self.query_one(OptionList)
+        focused = self.focused
+
+        # Arrow up/down while Input focused -> navigate the list
+        if focused is input_widget and event.key in ("up", "down"):
+            event.prevent_default()
+            event.stop()
+            option_list.focus()
+            if event.key == "up":
+                option_list.action_cursor_up()
+            else:
+                option_list.action_cursor_down()
+            return
+
+        # Printable char while OptionList focused -> type into Input
+        if focused is option_list and event.character and event.is_printable:
+            event.prevent_default()
+            event.stop()
+            input_widget.focus()
+            input_widget.insert_text_at_cursor(event.character)
+            return
+
+        # Backspace while OptionList focused and Input has text -> edit Input
+        if focused is option_list and event.key == "backspace" and input_widget.value:
+            event.prevent_default()
+            event.stop()
+            input_widget.focus()
+            input_widget.action_delete_left()
 
     @on(Input.Changed)
     def on_input_changed(self, event: Input.Changed) -> None:
