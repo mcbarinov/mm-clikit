@@ -1,6 +1,8 @@
+<!-- version: 2026-04-08 | source: https://github.com/mcbarinov/mm-clikit -->
+
 # CLI Application Architecture Guide
 
-Architecture reference for building CLI apps with [mm-clikit](../README.md).
+Architecture reference for building CLI apps with mm-clikit.
 
 ## Project Layout
 
@@ -10,13 +12,13 @@ src/mb_<name>/
 ├── config.py              # Frozen Pydantic Config
 │
 ├── core/
-│   ├── __init__.py        # Re-exports Core, Service
+│   ├── __init__.py
 │   ├── core.py            # Composition root (db + config + service)
-│   ├── service.py         # Business logic
+│   ├── service.py         # Business logic (validation, orchestration)
 │   └── db.py              # SQLite layer (optional)
 │
 ├── cli/
-│   ├── __init__.py        # Re-exports app
+│   ├── __init__.py
 │   ├── main.py            # TyperPlus app, callback, command registration
 │   ├── context.py         # Typed use_context()
 │   ├── output.py          # Output(DualModeOutput)
@@ -51,18 +53,21 @@ Use `ConfigDict(frozen=True)` where immutability matters (Config, row models), b
 
 ```
 CLI (cli/commands/)  →  Core  →  Service  →  Db
-       ↕                  ↕
-   Output              Config
+                         ↕         ↕
+                      Output    Config
+                         ↓
+                         Db  (direct access for simple reads)
 ```
 
-Commands never touch the DB directly. Business logic and validation live in the service layer.
+Commands use `core.service` for operations with business logic (validation, orchestration, multi-step).
+Commands use `core.db` directly for simple reads — no need for pass-through service wrappers.
 
 ## Dependency Flow
 
 ```
-cli/main.py  →  cli/commands/*  →  cli/context.py  →  core/  →  core/db.py
-                     ↓                   ↓
-                cli/output.py        config.py
+cli/main.py  →  cli/commands/*  →  cli/context.py  →  core/  →  core/service.py
+                     ↓                   ↓                ↓
+                cli/output.py        config.py        core/db.py (direct reads)
 ```
 
 ---
@@ -107,7 +112,7 @@ DEFAULT_DATA_DIR = Path.home() / ".local" / "mb-<name>"
 class Config(BaseModel):
     """Application-wide configuration."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True)  # Immutable after creation
 
     data_dir: Path = Field(description="Base directory for all application data")
 
@@ -174,19 +179,15 @@ The `cli_base_args()` method is optional — only needed if the app spawns backg
 
 ## Core Package
 
-All business logic lives in `core/`. The package exports a single entry point — the `Core` class —
-plus any types that CLI commands or output need.
+All business logic lives in `core/`.
 
 ### core/\_\_init\_\_.py
 
 ```python
 """Core business logic."""
-
-from mb_<name>.core.core import Core as Core
-from mb_<name>.core.service import Service as Service
 ```
 
-Re-exports `Core` and `Service` so consumers write `from mb_<name>.core import Core`.
+Empty — import from specific modules directly (e.g. `from mb_<name>.core.core import Core`).
 
 ### core/core.py
 
@@ -206,9 +207,9 @@ class Core:
     """
 
     def __init__(self, config: Config) -> None:
-        self.config = config
-        self.db = Db(config.db_path)
-        self.service = Service(self.db, config)
+        self.config = config  # Application configuration
+        self.db = Db(config.db_path)  # SQLite database — used directly for simple reads
+        self.service = Service(self.db, config)  # Business logic (validation, orchestration)
 
     def close(self) -> None:
         """Release resources."""
@@ -218,15 +219,18 @@ class Core:
 `Core` owns the lifecycle of all resources. The CLI callback creates it and registers
 cleanup via `ctx.call_on_close(core.close)`.
 
-Commands access business logic through `core.service`. Direct `core.db` access is
-available for special cases (daemons, tests) but commands should go through the service layer.
+Commands use `core.db` directly for simple reads (listing, fetching by ID).
+Commands use `core.service` for operations with real business logic — validation,
+multi-step orchestration, state checks. Don't create service methods that just
+forward to a single db method with no added logic.
 
 ### core/service.py
 
-The service layer. All business logic and validation live here.
+The service layer. Validation, orchestration, and business rules live here.
+Only create service methods when there is logic beyond a simple db call.
 
 ```python
-"""Core business logic."""
+"""Core business logic — validation and orchestration."""
 
 from mm_clikit import CliError
 
@@ -235,25 +239,25 @@ from mb_<name>.core.db import Db
 
 
 class Service:
-    """Main application service."""
+    """Business logic that goes beyond simple data access."""
 
     def __init__(self, db: Db, config: Config) -> None:
-        self._db = db
-        self._config = config
+        self._db = db  # Database access layer
+        self._config = config  # Application configuration
 
     def add_item(self, name: str) -> int:
         """Create an item. Returns the new ID."""
         if not name.strip():
             raise CliError("Name cannot be empty.", "EMPTY_NAME")
         return self._db.insert_item(name.strip())
-
-    def list_items(self) -> list[dict]:
-        """List all items."""
-        return self._db.fetch_all_items()
 ```
 
 Raise `CliError` for any validation or business rule violation.
 Commands don't catch these — TyperPlus handles formatting and exit automatically.
+
+**When to use Service vs direct Db access:**
+- **Service:** validation, multi-step operations, state transitions, business rules, error checking
+- **Direct Db:** simple reads (list all, fetch by ID), straightforward inserts with no validation
 
 ### core/db.py (optional)
 
@@ -292,8 +296,8 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
 class ItemRow(SqliteRow):
     """A single item from the database."""
 
-    id: int
-    name: str
+    id: int  # Primary key
+    name: str  # Item name
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> Self:
@@ -331,12 +335,10 @@ Migration rules:
 ### cli/\_\_init\_\_.py
 
 ```python
-"""CLI entry point."""
-
-from mb_<name>.cli.main import app as app
+"""CLI adapter."""
 ```
 
-Re-exports `app` so the pyproject.toml entry point is `mb_<name>.cli:app`.
+Empty — the entry point in pyproject.toml points directly to `mb_<name>.cli.main:app`.
 
 ### cli/context.py
 
@@ -347,7 +349,7 @@ import typer
 from mm_clikit import CoreContext, use_context as _use_context
 
 from mb_<name>.cli.output import Output
-from mb_<name>.core import Core
+from mb_<name>.core.core import Core
 
 
 def use_context(ctx: typer.Context) -> CoreContext[Core, Output]:
@@ -409,7 +411,7 @@ from mb_<name>.cli.commands.add import add
 from mb_<name>.cli.commands.list import list_
 from mb_<name>.cli.output import Output
 from mb_<name>.config import Config
-from mb_<name>.core import Core
+from mb_<name>.core.core import Core
 
 app = TyperPlus(package_name="mb-<name>")
 
@@ -466,7 +468,26 @@ def add(
     app.out.print_item_added(item_id, name)
 ```
 
-Commands are thin — extract context, call service, call output. No try/except needed.
+Uses `core.service` because `add_item` has validation logic (non-empty name check).
+
+### cli/commands/list.py
+
+```python
+"""List all items."""
+
+import typer
+
+from mb_<name>.cli.context import use_context
+
+
+def list_(ctx: typer.Context) -> None:
+    """Show all items."""
+    app = use_context(ctx)
+    items = app.core.db.fetch_all_items()
+    app.out.print_items(items)
+```
+
+Uses `core.db` directly — fetching all items is a simple read with no business logic.
 
 ---
 
@@ -478,7 +499,7 @@ As the project grows, organize core logic into domain sub-packages:
 src/mb_<name>/
 ├── config.py
 ├── core/
-│   ├── __init__.py        # exports Core
+│   ├── __init__.py
 │   ├── core.py
 │   ├── db/                # Multiple DB access classes
 │   │   ├── __init__.py
@@ -506,7 +527,8 @@ class Core:
         self.orders = OrderService(self.db, config)
 ```
 
-Commands access them as `app.core.users.create(...)`, `app.core.orders.list(...)`.
+Commands access them as `app.core.users.create(...)` for business logic,
+or `app.core.db.fetch_users()` for simple reads.
 
 The `cli/` structure stays the same. Only the core grows.
 
@@ -516,12 +538,17 @@ Core modules can be imported and tested directly — no CLI involved:
 
 ```python
 from mb_<name>.config import Config
-from mb_<name>.core import Core
+from mb_<name>.core.core import Core
 
 config = Config(data_dir=tmp_path)
 core = Core(config)
+
+# Service for operations with business logic
 item_id = core.service.add_item("test")
-assert core.service.list_items()[0].name == "test"
+
+# Direct db for simple reads
+assert core.db.fetch_all_items()[0].name == "test"
+
 core.close()
 ```
 
@@ -532,8 +559,8 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 ## Rules Summary
 
 1. **Structure:** Core logic in `core/` package. CLI adapter in `cli/` subfolder. Config at package root.
-2. **Dependencies:** One-way only: `cli/` → `core/`. Core never imports from `cli/`.
-3. **Layers:** `cli/commands/` → `core.service` → `core.db`. Commands never touch the DB directly.
+2. **Dependencies:** `cli/` → `core/` → `config.py` (one-way for logic). Core never imports from `cli/`. Config may import shared type aliases (e.g. `Literal` types) from `core/` — these are domain vocabulary, not logic coupling.
+3. **Data access:** Commands use `core.service` for business logic (validation, orchestration). Commands use `core.db` directly for simple reads. Don't create service methods that just forward to db.
 4. **Core class:** Composition root — creates and owns Db, Service, Config. Single `Core(config)` constructor, `close()` for cleanup.
 5. **Errors:** `CliError(message, code)` from mm-clikit. Raise from service. TyperPlus catches automatically.
 6. **Output:** All user output via `Output(DualModeOutput)` in `cli/output.py`. One method per operation, both `json_data` and `display_data`.
@@ -541,5 +568,6 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 8. **Context:** Pre-typed `use_context()` in `cli/context.py`. Returns `CoreContext[Core, Output]`. Commands call `use_context(ctx)` — one import, fully typed.
 9. **JSON mode:** Via TyperPlus `--json` flag. `DualModeOutput` reads it automatically. Never add a manual `--json` parameter.
 10. **Logging:** `setup_logging(logger_name, log_path)` from mm-clikit, called in the callback.
-11. **Entry point:** `mb_<name>.cli:app` in pyproject.toml (via `cli/__init__.py` re-export).
+11. **Entry point:** `mb_<name>.cli.main:app` in pyproject.toml.
 12. **Row models:** Subclass `SqliteRow` for typed database rows with `from_row()` conversion.
+13. **`__init__.py`:** Keep empty in application packages — just a module docstring. No re-exports.

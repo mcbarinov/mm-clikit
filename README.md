@@ -304,7 +304,7 @@ Row factory is `sqlite3.Row` (column access by name).
 Migrations must not call `commit()` — `SqliteDb` commits each migration with its version bump atomically.
 Use `conn.execute()`, not `conn.executescript()`.
 
-See [CLI Application Architecture Guide](docs/app-guide.md) for the full `db.py` pattern.
+See [CLI Application Architecture Guide](docs/cli-architecture.md) for the full `db.py` pattern.
 
 ### TUI modal screens
 
@@ -477,7 +477,7 @@ def stop():
 
 ## Documentation
 
-- [CLI Application Architecture Guide](docs/app-guide.md) — architecture reference for building CLI apps with mm-clikit
+- [CLI Application Architecture Guide](docs/cli-architecture.md) — architecture reference for building CLI apps with mm-clikit
 
 ## Examples
 
