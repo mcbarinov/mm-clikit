@@ -11,6 +11,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+Migration = Callable[[sqlite3.Connection], None] | str
+"""A single schema migration: either a callable receiving a Connection, or a SQL string with semicolon-separated statements."""
+
 
 class SqliteRow(BaseModel):
     """Base class for typed SQLite row models.
@@ -43,18 +46,20 @@ class SqliteDb:
     Subclass and add domain-specific query/mutation methods.
     The connection is available as ``conn`` (with ``row_factory=sqlite3.Row``) for subclass use.
 
-    Migration functions receive a ``sqlite3.Connection`` and must NOT call ``commit()`` —
-    the base class commits each migration together with its ``user_version`` bump atomically.
-    Use ``conn.execute()`` for each statement (not ``conn.executescript()``, which does implicit commits).
+    Each migration is either a callable receiving ``sqlite3.Connection`` or a plain SQL string
+    with semicolon-separated statements. Callables must NOT call ``commit()``.
+    The base class commits each migration together with its ``user_version`` bump atomically.
+    Do not use ``conn.executescript()`` in callable migrations (it does implicit commits).
     """
 
-    def __init__(self, db_path: Path, migrations: tuple[Callable[[sqlite3.Connection], None], ...] = ()) -> None:
+    def __init__(self, db_path: Path, migrations: tuple[Migration, ...] = ()) -> None:
         """Open a SQLite connection, apply pragmas, and run pending migrations.
 
         Args:
             db_path: Path to the SQLite database file (parent dirs created automatically).
-            migrations: Ordered migration functions. Each receives a ``sqlite3.Connection``
-                and must not call ``commit()``.
+            migrations: Ordered migrations. Each is either a callable receiving
+                ``sqlite3.Connection`` (must not call ``commit()``) or a SQL string
+                with semicolon-separated statements.
 
         """
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,13 +74,20 @@ class SqliteDb:
         """Close the underlying SQLite connection."""
         self.conn.close()
 
-    def _run_migrations(self, migrations: tuple[Callable[[sqlite3.Connection], None], ...]) -> None:
+    def _run_migrations(self, migrations: tuple[Migration, ...]) -> None:
         """Run all pending schema migrations based on PRAGMA user_version."""
         current_version: int = self.conn.execute("PRAGMA user_version").fetchone()[0]
-        for i, migrate_fn in enumerate(migrations):
+        for i, migration in enumerate(migrations):
             target_version = i + 1
             if current_version < target_version:
-                migrate_fn(self.conn)
+                if isinstance(migration, str):
+                    statements = [s.strip() for s in migration.split(";") if s.strip()]
+                    for stmt in statements:
+                        self.conn.execute(stmt)
+                    label = (statements[0] if statements else "SQL")[:60]
+                else:
+                    migration(self.conn)
+                    label = migration.__doc__ or str(getattr(migration, "__name__", "callable"))
                 self.conn.execute(f"PRAGMA user_version = {target_version}")
                 self.conn.commit()
-                logger.info("Applied migration v%d (%s)", target_version, migrate_fn.__doc__)
+                logger.info("Applied migration v%d (%s)", target_version, label)

@@ -15,6 +15,7 @@ from .process import read_pid_file as read_pid_file
 from .process import spawn_daemon as spawn_daemon
 from .process import stop_process as stop_process
 from .process import write_pid_file as write_pid_file
+from .sqlite import Migration as Migration
 from .sqlite import SqliteDb as SqliteDb
 from .sqlite import SqliteRow as SqliteRow
 from .toml_config import TomlConfig as TomlConfig
