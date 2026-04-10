@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from collections.abc import Sequence
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -19,6 +20,8 @@ def setup_logging(
     console_level: int | None = logging.INFO,
     max_bytes: int = 1_000_000,
     backup_count: int = 3,
+    quiet_loggers: Sequence[str] = (),
+    quiet_level: int = logging.WARNING,
 ) -> None:
     """Configure a named logger with optional file and console handlers.
 
@@ -31,6 +34,8 @@ def setup_logging(
         console_level: Level for the stderr console handler. ``None`` disables console output.
         max_bytes: Maximum size of a single log file before rotation.
         backup_count: Number of rotated backup files to keep.
+        quiet_loggers: Names of third-party loggers to quiet down (e.g. ``("httpx", "aiohttp.client")``).
+        quiet_level: Level applied to each logger in ``quiet_loggers``. Defaults to ``WARNING``.
 
     """
     logger = logging.getLogger(logger_name)
@@ -52,6 +57,9 @@ def setup_logging(
         console_handler.setFormatter(_FORMATTER)
         logger.addHandler(console_handler)
         active_levels.append(console_level)
+
+    for name in quiet_loggers:
+        logging.getLogger(name).setLevel(quiet_level)
 
     if not active_levels:
         return
