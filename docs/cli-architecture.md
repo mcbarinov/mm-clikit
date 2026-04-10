@@ -1,4 +1,4 @@
-<!-- version: 2026-04-08 | source: https://github.com/mcbarinov/mm-clikit -->
+<!-- version: 2026-04-09 | source: https://github.com/mcbarinov/mm-clikit -->
 
 # CLI Application Architecture Guide
 
@@ -422,7 +422,7 @@ def main(
 ) -> None:
     """Short app description."""
     config = Config.build(data_dir)
-    setup_logging("mb_<name>", config.log_path)
+    setup_logging("mb_<name>", file_path=config.log_path)
     core = Core(config)
     ctx.call_on_close(core.close)
     ctx.obj = CoreContext(core=core, out=Output())
@@ -562,7 +562,7 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 7. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
 8. **Context:** Pre-typed `use_context()` in `cli/context.py`. Returns `CoreContext[Core, Output]`. Commands call `use_context(ctx)` — one import, fully typed.
 9. **JSON mode:** Via TyperPlus `--json` flag. `DualModeOutput` reads it automatically. Never add a manual `--json` parameter.
-10. **Logging:** `setup_logging(logger_name, log_path)` from mm-clikit, called in the callback.
+10. **Logging:** `setup_logging(logger_name, file_path=...)` from mm-clikit, called in the callback. `file_path` is optional (console-only by default); pass it to enable the rotating log file.
 11. **Entry point:** `mb_<name>.cli.main:app` in pyproject.toml.
 12. **Row models:** Subclass `SqliteRow` for typed database rows with `from_row()` conversion.
 13. **`__init__.py`:** Keep empty in application packages — just a module docstring. No re-exports.
