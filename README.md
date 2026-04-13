@@ -162,7 +162,11 @@ fatal("something went wrong")
 
 ### DualModeOutput
 
-Base class for CLI output handlers that support both JSON and display modes.
+Optional base class for CLI output handlers that support both JSON and display modes.
+Small CLIs that don't need `--json` can skip `DualModeOutput` entirely and call the `print_*`
+functions directly — see the [CLI Application Architecture Guide](docs/cli-architecture.md)
+for the two output styles.
+
 Reads `--json` flag automatically via `get_json_mode()` — no constructor arguments needed.
 Subclass it and add domain-specific methods that prepare `json_data` + `display_data` and delegate to `output`.
 
