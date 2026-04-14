@@ -109,12 +109,28 @@ class TestPrintTable:
         assert "B" in output
 
     def test_cell_type_conversion(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Converts cell values to strings."""
+        """Converts cell values to strings; None renders as em dash."""
         mm_clikit.print_table(["Val"], [[123], [None], [True]])
         output = capsys.readouterr().out
         assert "123" in output
-        assert "None" in output
+        assert "—" in output
+        assert "None" not in output
         assert "True" in output
+
+    def test_none_as_custom(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Custom none_as marker replaces None cells."""
+        mm_clikit.print_table(["Val"], [["a"], [None]], none_as="N/A")
+        output = capsys.readouterr().out
+        assert "N/A" in output
+        assert "—" not in output
+
+    def test_none_as_empty(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """none_as='' collapses None and empty-string cells to blank."""
+        mm_clikit.print_table(["Val"], [["a"], [None], [""]], none_as="")
+        output = capsys.readouterr().out
+        assert "a" in output
+        assert "—" not in output
+        assert "None" not in output
 
 
 class TestPrintToml:

@@ -237,6 +237,10 @@ print_table(
 )
 ```
 
+`None` cells render as an em dash (`—`) by default so they stay distinct from
+empty-string cells. Override with `none_as="N/A"`, or pass `none_as=""` to
+collapse both to blank.
+
 #### print_toml
 
 Print TOML with syntax highlighting.

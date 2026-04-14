@@ -28,11 +28,22 @@ def print_json(data: object, type_handlers: dict[type[Any], Callable[[Any], Any]
     rich.print_json(json_dumps(data, type_handlers=type_handlers))
 
 
-def print_table(columns: list[str], rows: list[list[Any]], *, title: str | None = None) -> None:
-    """Print data as a formatted table."""
+def print_table(
+    columns: list[str],
+    rows: list[list[Any]],
+    *,
+    title: str | None = None,
+    none_as: str = "—",
+) -> None:
+    """Print data as a formatted table.
+
+    ``None`` cells render as ``none_as`` (default: em dash) so they stay
+    visually distinct from empty-string cells. Pass ``none_as=""`` to collapse
+    both to blank.
+    """
     table = Table(*columns, title=title)
     for row in rows:
-        table.add_row(*(str(cell) for cell in row))
+        table.add_row(*(none_as if cell is None else str(cell) for cell in row))
     console = Console()
     console.print(table)
 
