@@ -10,6 +10,7 @@ from .output import print_json as print_json
 from .output import print_plain as print_plain
 from .output import print_table as print_table
 from .output import print_toml as print_toml
+from .params import DecimalParam as DecimalParam
 from .process import is_process_running as is_process_running
 from .process import read_pid_file as read_pid_file
 from .process import spawn_daemon as spawn_daemon

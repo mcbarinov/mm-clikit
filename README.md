@@ -254,6 +254,35 @@ print_toml({"server": {"host": "localhost", "port": 8080}})
 print_toml({"debug": True}, line_numbers=True, theme="dracula")
 ```
 
+### Custom click parameter types
+
+#### DecimalParam
+
+`click.ParamType` that parses CLI values into `decimal.Decimal` with optional
+inclusive/exclusive range bounds. Non-finite values (`Inf`, `NaN`) are always
+rejected. Use with typer via `click_type=`:
+
+```python
+from decimal import Decimal
+from typing import Annotated
+import typer
+from mm_clikit import DecimalParam
+
+@app.command()
+def pay(
+    amount: Annotated[
+        Decimal,
+        typer.Argument(click_type=DecimalParam(lower="0.01")),
+    ],
+) -> None:
+    ...
+```
+
+Bounds accept `Decimal | int | str` for convenience (avoids `Decimal("0.01")`
+boilerplate at the call site); `float` is rejected to prevent precision
+surprises. Pass `lower_open=True` / `upper_open=True` for strict comparisons,
+mirroring `click.FloatRange`.
+
 ### TomlConfig
 
 Pydantic-based TOML configuration loader. Inherits from `BaseModel` with `extra="forbid"`.
