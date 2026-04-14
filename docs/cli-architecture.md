@@ -453,14 +453,14 @@ def main(
     setup_logging("mb_<name>", file_path=config.log_path)
     core = Core(config)
     ctx.call_on_close(core.close)
-    ctx.obj = CoreContext[Core](core=core)
+    ctx.obj = CoreContext[Core](core=core, out=None)
 
 
 app.command(aliases=["a"])(add)
 app.command(name="list", aliases=["l", "ls"])(list_)
 ```
 
-**Style B (with Output):** same as above, but `json_option=False` is dropped, `Output` is imported from `mb_<name>.cli.output`, and the last line becomes `ctx.obj = CoreContext(core=core, out=Output())`.
+**Style B (with Output):** same as above, but `json_option=False` is dropped, `Output` is imported from `mb_<name>.cli.output`, and the last line becomes `ctx.obj = CoreContext[Core, Output](core=core, out=Output())`. Parametrize the constructor explicitly so `app.out` is typed as `Output` rather than falling back on the `OutT = None` default.
 
 The callback handles all initialization: config, logging, core, context.
 Resources that need cleanup use `ctx.call_on_close()`.
