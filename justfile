@@ -1,3 +1,5 @@
+set dotenv-load := true
+
 version := `uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'`
 
 
@@ -46,3 +48,30 @@ pre-commit:
 
 pre-commit-autoupdate:
     uv run pre-commit autoupdate
+
+sync-docs *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${CLI_PROJECTS:?CLI_PROJECTS not set in .env}"
+    src="docs/cli-architecture.md"
+    apply=false
+    [[ "{{args}}" == "apply" ]] && apply=true
+    for proj in $CLI_PROJECTS; do
+        proj="${proj/#\~/$HOME}"
+        dst="$proj/docs/cli-architecture.md"
+        if [[ ! -f "$dst" ]]; then
+            echo "skip (no target): $dst"
+            continue
+        fi
+        if cmp -s "$src" "$dst"; then
+            echo "unchanged: $dst"
+            continue
+        fi
+        if $apply; then
+            cp "$src" "$dst"
+            echo "updated:   $dst"
+        else
+            echo "would update: $dst"
+        fi
+    done
+    $apply || echo "(dry run — re-run with 'just sync-docs apply' to write)"

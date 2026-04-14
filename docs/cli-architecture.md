@@ -1,4 +1,4 @@
-<!-- version: 2026-04-13 | source: https://github.com/mcbarinov/mm-clikit -->
+<!-- version: 2026-04-14 | source: https://github.com/mcbarinov/mm-clikit -->
 
 # CLI Application Architecture Guide
 
