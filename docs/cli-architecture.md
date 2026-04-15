@@ -645,7 +645,7 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 7. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
 8. **Context:** Pre-typed `use_context()` in `cli/context.py`. Style A returns `CoreContext[Core]`; Style B returns `CoreContext[Core, Output]`. Commands call `use_context(ctx)` — one import, fully typed.
 9. **JSON mode:** Requires Style B (`DualModeOutput`). Enabled via TyperPlus `--json` flag, which `DualModeOutput` reads automatically — never add a manual `--json` parameter. Style A apps must disable the flag with `TyperPlus(json_option=False)`.
-10. **Logging:** `setup_logging(logger_name, file_path=...)` from mm-clikit, called in the callback. `file_path` is optional (console-only by default); pass it to enable the rotating log file.
+10. **Logging:** `setup_logging(logger_name, file_path=...)` from mm-clikit, called in the callback. `file_path` is optional (console-only by default); pass it to enable the rotating log file. When `file_path` is set, `setup_logging` also installs a `sys.excepthook` that logs uncaught exceptions as `CRITICAL` — so crashes in workers, trays, and daemons land in the log file instead of disappearing with redirected stderr.
 11. **Entry point:** `mb_<name>.cli.main:app` in pyproject.toml.
 12. **Row models:** Subclass `SqliteRow` for typed database rows with `from_row()` conversion.
 13. **`__init__.py`:** Keep empty in application packages — just a module docstring. No re-exports.
