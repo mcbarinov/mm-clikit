@@ -1,4 +1,4 @@
-<!-- version: 2026-04-14 | source: https://github.com/mcbarinov/mm-clikit -->
+<!-- version: 2026-04-15 | source: https://github.com/mcbarinov/mm-clikit -->
 
 # CLI Application Architecture Guide
 
@@ -24,8 +24,12 @@ src/mb_<name>/
 │   ├── output.py          # Output(DualModeOutput)
 │   └── commands/          # One file per command
 │       ├── __init__.py
-│       ├── add.py
-│       └── list.py
+│       ├── add.py         # top-level: `my-app add`
+│       ├── list.py        # top-level: `my-app list`
+│       └── edit/          # group: `my-app edit <subcommand>`
+│           ├── __init__.py
+│           ├── delete.py
+│           └── rename.py
 │
 ├── tui/                   # TUI adapter (optional, uses Core)
 │   ├── __init__.py
@@ -530,6 +534,39 @@ def list_(ctx: typer.Context) -> None:
 
 Uses `core.db` directly — fetching all items is a simple read with no business logic.
 
+### Command groups (subfolders)
+
+When a Typer sub-app is registered via `add_typer`, put its subcommand files in `cli/commands/<group>/`, one file per subcommand. The subfolder name matches the group name on the CLI (use underscores in the folder if the CLI name has hyphens, same rule as command filenames).
+
+```
+cli/commands/
+├── add.py             # `my-app add`
+├── list.py            # `my-app list`
+└── edit/              # `my-app edit ...`
+    ├── __init__.py
+    ├── delete.py      # `my-app edit delete`
+    └── rename.py      # `my-app edit rename`
+```
+
+Rules:
+
+- **Top-level commands stay flat.** Commands registered directly on `app` live as flat files in `cli/commands/`.
+- **Groups get their own subfolder.** Any `add_typer` group with multiple subcommands gets a folder. A group with a single subcommand may stay flat if it's unlikely to grow — judgment call.
+- **`__init__.py`:** empty module docstring only, per rule #13. No re-exports, no logic.
+- **Command files are identical** to flat commands — same `use_context(ctx)` pattern, same Style A / Style B choice. Only the import path changes.
+
+Wire the group in `main.py` by building a sub-app and calling `add_typer`:
+
+```python
+from mb_<name>.cli.commands.edit.delete import delete
+from mb_<name>.cli.commands.edit.rename import rename
+
+edit_app = TyperPlus()
+edit_app.command(name="delete")(delete)
+edit_app.command(name="rename")(rename)
+app.add_typer(edit_app, name="edit", help="Edit existing items.")
+```
+
 ---
 
 ## Scaling Up
@@ -599,7 +636,7 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 
 ## Rules Summary
 
-1. **Structure:** Core logic in `core/` package. CLI adapter in `cli/` subfolder. Config at package root.
+1. **Structure:** Core logic in `core/` package. CLI adapter in `cli/` subfolder. Config at package root. Subcommand groups live in `cli/commands/<group>/`, one file per subcommand; top-level commands stay flat in `cli/commands/`.
 2. **Dependencies:** `cli/` → `core/` → `config.py` (one-way for logic). Core never imports from `cli/`. Config may import shared type aliases (e.g. `Literal` types) from `core/` — these are domain vocabulary, not logic coupling.
 3. **Data access:** Commands use `core.service` for business logic (validation, orchestration). Commands use `core.db` directly for simple reads. Don't create service methods that just forward to db.
 4. **Core class:** Composition root — creates and owns Db, Service, Config. Single `Core(config)` constructor, `close()` for cleanup.
