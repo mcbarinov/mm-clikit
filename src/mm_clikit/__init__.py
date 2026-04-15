@@ -1,6 +1,8 @@
 """Shared CLI utilities library."""
 
 from .cli_error import CliError as CliError
+from .config import BaseConfig as BaseConfig
+from .config import BaseDataDirConfig as BaseDataDirConfig
 from .core_context import CoreContext as CoreContext
 from .core_context import use_context as use_context
 from .dual_mode_output import DualModeOutput as DualModeOutput

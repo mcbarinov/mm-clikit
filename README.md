@@ -287,6 +287,52 @@ boilerplate at the call site); `float` is rejected to prevent precision
 surprises. Pass `lower_open=True` / `upper_open=True` for strict comparisons,
 mirroring `click.FloatRange`.
 
+### Config base classes
+
+`BaseConfig` is a thin frozen `BaseModel`. `BaseDataDirConfig` adds the common pattern
+of resolving a `data_dir` from CLI flag / env var / default.
+
+```python
+from pathlib import Path
+from mm_clikit import BaseDataDirConfig
+from pydantic import computed_field
+
+DEFAULT_DATA_DIR = Path.home() / ".local" / "my-app"
+
+
+class Config(BaseDataDirConfig):
+    @computed_field
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "my-app.db"
+
+    def base_argv(self) -> list[str]:
+        return super().base_argv(DEFAULT_DATA_DIR)
+
+    @staticmethod
+    def build(data_dir: Path | None = None) -> "Config":
+        resolved = BaseDataDirConfig.resolve_data_dir(data_dir, "MY_APP_DATA_DIR", DEFAULT_DATA_DIR)
+        return Config(data_dir=resolved)
+```
+
+`BaseDataDirConfig` adds:
+
+- `data_dir: Path` field.
+- `resolve_data_dir(cli_value, env_var, default)` classmethod — resolves in order
+  CLI arg → env var → default, converts to an absolute path, and creates the directory
+  (`parents=True, exist_ok=True`).
+- `base_argv(default_data_dir)` method — returns argv for re-invoking the current binary.
+  The first element is `Path(sys.argv[0]).resolve()`, which correctly targets the running
+  binary under multiple installs on PATH, `uv run`, dev-mode entry points, and pipx.
+  `--data-dir` is appended only when `data_dir` differs from `default_data_dir`.
+
+```python
+from mm_clikit import spawn_daemon
+spawn_daemon(config.base_argv() + ["serve"])
+```
+
+For apps without a data directory, inherit `BaseConfig` directly.
+
 ### TomlConfig
 
 Pydantic-based TOML configuration loader. Inherits from `BaseModel` with `extra="forbid"`.

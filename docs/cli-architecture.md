@@ -1,4 +1,4 @@
-<!-- version: 2026-04-15 | source: https://github.com/mcbarinov/mm-clikit -->
+<!-- version: 2026-04-16 | source: https://github.com/mcbarinov/mm-clikit -->
 
 # CLI Application Architecture Guide
 
@@ -112,22 +112,18 @@ subclass `CliError`. But default to using `CliError` directly — don't create a
 ```python
 """Centralized application configuration."""
 
-import os
 import tomllib
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from mm_clikit import BaseDataDirConfig
+from pydantic import computed_field
 
 DEFAULT_DATA_DIR = Path.home() / ".local" / "mb-<name>"
 
 
-class Config(BaseModel):
+class Config(BaseDataDirConfig):
     """Application-wide configuration."""
-
-    model_config = ConfigDict(frozen=True)  # Immutable after creation
-
-    data_dir: Path = Field(description="Base directory for all application data")
 
     @computed_field(description="SQLite database file")
     @property
@@ -147,26 +143,14 @@ class Config(BaseModel):
         """Optional TOML configuration file."""
         return self.data_dir / "config.toml"
 
-    def cli_base_args(self) -> list[str]:
-        """Build CLI base args, including --data-dir only when non-default.
-
-        Useful for spawning subprocesses (daemons, workers) that need
-        to inherit the data directory setting.
-        """
-        args: list[str] = ["mb-<name>"]
-        if self.data_dir != DEFAULT_DATA_DIR:
-            args.extend(["--data-dir", str(self.data_dir)])
-        return args
+    def base_argv(self) -> list[str]:
+        """Return argv that re-invokes this binary with the current --data-dir."""
+        return super().base_argv(DEFAULT_DATA_DIR)
 
     @staticmethod
     def build(data_dir: Path | None = None) -> Config:
         """Build a Config from CLI arg / env var / default, with optional TOML overlay."""
-        if data_dir is not None:
-            resolved = data_dir.resolve()
-        elif env := os.environ.get("MB_<NAME>_DATA_DIR"):
-            resolved = Path(env).resolve()
-        else:
-            resolved = DEFAULT_DATA_DIR
+        resolved = BaseDataDirConfig.resolve_data_dir(data_dir, "MB_<NAME>_DATA_DIR", DEFAULT_DATA_DIR)
 
         kwargs: dict[str, Any] = {"data_dir": resolved}
         config_path = resolved / "config.toml"
@@ -176,17 +160,17 @@ class Config(BaseModel):
             # Read app-specific settings from TOML here
             # e.g.: kwargs["timeout"] = toml_data.get("timeout", 30)
 
-        resolved.mkdir(parents=True, exist_ok=True)
         return Config(**kwargs)
 ```
 
-Data directory resolution order:
-1. `--data-dir` CLI flag (highest priority)
+Resolution order (handled by `BaseDataDirConfig.resolve_data_dir`):
+1. `--data-dir` CLI flag
 2. `MB_<NAME>_DATA_DIR` environment variable
 3. `~/.local/mb-<name>/` default
 
-The `cli_base_args()` method is optional — only needed if the app spawns background processes
-(daemons, workers) that must inherit the data directory.
+The `base_argv()` override is only needed when the app spawns subprocesses that must
+re-enter the same binary. Apps without a data directory inherit `BaseConfig` directly
+and skip `data_dir`, `resolve_data_dir`, and `base_argv`.
 
 ---
 
@@ -642,7 +626,7 @@ The CLI is just one adapter over the core. Future adapters (web API, telegram bo
 4. **Core class:** Composition root — creates and owns Db, Service, Config. Single `Core(config)` constructor, `close()` for cleanup.
 5. **Errors:** `CliError(message, code)` from mm-clikit. Raise from service. TyperPlus catches automatically.
 6. **Output:** Style B — all user output via `Output(DualModeOutput)` in `cli/output.py`, one method per operation with both `json_data` and `display_data`. Style A — commands call `print_plain` / `print_table` / `print_toml` / `print_json` from mm-clikit directly, no `Output` class.
-7. **Config:** Frozen Pydantic. Resolution: `--data-dir` → env var → default. Optional TOML overlay.
+7. **Config:** Subclass `BaseDataDirConfig` from mm-clikit (or `BaseConfig` for apps without a data directory). Resolution: `--data-dir` → env var → default, via `BaseDataDirConfig.resolve_data_dir`. Optional TOML overlay in `build()`.
 8. **Context:** Pre-typed `use_context()` in `cli/context.py`. Style A returns `CoreContext[Core]`; Style B returns `CoreContext[Core, Output]`. Commands call `use_context(ctx)` — one import, fully typed.
 9. **JSON mode:** Requires Style B (`DualModeOutput`). Enabled via TyperPlus `--json` flag, which `DualModeOutput` reads automatically — never add a manual `--json` parameter. Style A apps must disable the flag with `TyperPlus(json_option=False)`.
 10. **Logging:** `setup_logging(logger_name, file_path=...)` from mm-clikit, called in the callback. `file_path` is optional (console-only by default); pass it to enable the rotating log file. When `file_path` is set, `setup_logging` also installs a `sys.excepthook` that logs uncaught exceptions as `CRITICAL` — so crashes in workers, trays, and daemons land in the log file instead of disappearing with redirected stderr.
