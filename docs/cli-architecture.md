@@ -1,4 +1,4 @@
-<!-- version: 2026-04-16 | source: https://github.com/mcbarinov/mm-clikit -->
+<!-- version: 2026-04-15 | source: https://github.com/mcbarinov/mm-clikit -->
 
 # CLI Application Architecture Guide
 
@@ -114,16 +114,16 @@ subclass `CliError`. But default to using `CliError` directly — don't create a
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from mm_clikit import BaseDataDirConfig
 from pydantic import computed_field
 
-DEFAULT_DATA_DIR = Path.home() / ".local" / "mb-<name>"
-
 
 class Config(BaseDataDirConfig):
     """Application-wide configuration."""
+
+    app_name: ClassVar[str] = "mb-<name>"
 
     @computed_field(description="SQLite database file")
     @property
@@ -143,14 +143,10 @@ class Config(BaseDataDirConfig):
         """Optional TOML configuration file."""
         return self.data_dir / "config.toml"
 
-    def base_argv(self) -> list[str]:
-        """Return argv that re-invokes this binary with the current --data-dir."""
-        return super().base_argv(DEFAULT_DATA_DIR)
-
     @staticmethod
     def build(data_dir: Path | None = None) -> Config:
         """Build a Config from CLI arg / env var / default, with optional TOML overlay."""
-        resolved = BaseDataDirConfig.resolve_data_dir(data_dir, "MB_<NAME>_DATA_DIR", DEFAULT_DATA_DIR)
+        resolved = Config.resolve_data_dir(data_dir)
 
         kwargs: dict[str, Any] = {"data_dir": resolved}
         config_path = resolved / "config.toml"
@@ -163,14 +159,20 @@ class Config(BaseDataDirConfig):
         return Config(**kwargs)
 ```
 
-Resolution order (handled by `BaseDataDirConfig.resolve_data_dir`):
-1. `--data-dir` CLI flag
-2. `MB_<NAME>_DATA_DIR` environment variable
-3. `~/.local/mb-<name>/` default
+Setting `app_name` alone gives you:
+1. Default data directory at `~/.local/mb-<name>/`
+2. Env var override `MB_<NAME>_DATA_DIR` (hyphens become underscores, uppercased)
+3. `base_argv()` correctly omits `--data-dir` when the directory matches the default
 
-The `base_argv()` override is only needed when the app spawns subprocesses that must
-re-enter the same binary. Apps without a data directory inherit `BaseConfig` directly
-and skip `data_dir`, `resolve_data_dir`, and `base_argv`.
+Resolution order inside `resolve_data_dir`:
+1. `--data-dir` CLI flag
+2. Env var (derived from `app_name` or set explicitly via `data_dir_env_var`)
+3. Default directory (derived from `app_name` or set explicitly via `default_data_dir`)
+
+Override either `default_data_dir` or `data_dir_env_var` as a `ClassVar` when an
+app needs a non-standard layout (e.g. XDG directories, custom env var name). Apps
+without a data directory inherit `BaseConfig` directly and skip `data_dir`,
+`resolve_data_dir`, and `base_argv`.
 
 ---
 

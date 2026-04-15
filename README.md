@@ -289,42 +289,65 @@ mirroring `click.FloatRange`.
 
 ### Config base classes
 
-`BaseConfig` is a thin frozen `BaseModel`. `BaseDataDirConfig` adds the common pattern
-of resolving a `data_dir` from CLI flag / env var / default.
+`BaseConfig` is a thin frozen `BaseModel`. It exposes one optional `ClassVar`:
+
+- `app_name` — application identity. Declared on `BaseConfig` so any config
+  subclass (data-dir or not) can set it; future framework integrations
+  (logging, version display) may read it.
+
+`BaseDataDirConfig` adds the common pattern of resolving a `data_dir` from
+CLI flag / env var / default and uses `app_name` to derive the defaults.
+Two additional `ClassVar`s tune data-dir resolution:
+
+- `default_data_dir` — explicit default directory; overrides the
+  `~/.local/<app_name>` derivation.
+- `data_dir_env_var` — explicit env var name; overrides the
+  `<APP_NAME>_DATA_DIR` derivation (hyphens become underscores).
+
+At least one of `app_name` or `default_data_dir` must be set.
 
 ```python
 from pathlib import Path
+from typing import ClassVar
+
 from mm_clikit import BaseDataDirConfig
 from pydantic import computed_field
 
-DEFAULT_DATA_DIR = Path.home() / ".local" / "my-app"
-
 
 class Config(BaseDataDirConfig):
+    app_name: ClassVar[str] = "my-app"
+
     @computed_field
     @property
     def db_path(self) -> Path:
         return self.data_dir / "my-app.db"
 
-    def base_argv(self) -> list[str]:
-        return super().base_argv(DEFAULT_DATA_DIR)
-
     @staticmethod
     def build(data_dir: Path | None = None) -> "Config":
-        resolved = BaseDataDirConfig.resolve_data_dir(data_dir, "MY_APP_DATA_DIR", DEFAULT_DATA_DIR)
+        resolved = Config.resolve_data_dir(data_dir)
         return Config(data_dir=resolved)
+```
+
+The snippet above gives you a default of `~/.local/my-app` and env var
+`MY_APP_DATA_DIR` for free. To override either one, set the corresponding
+`ClassVar` explicitly:
+
+```python
+class Config(BaseDataDirConfig):
+    app_name: ClassVar[str] = "my-app"
+    default_data_dir: ClassVar[Path] = Path.home() / ".config" / "my-app"  # XDG layout
 ```
 
 `BaseDataDirConfig` adds:
 
 - `data_dir: Path` field.
-- `resolve_data_dir(cli_value, env_var, default)` classmethod — resolves in order
+- `resolve_data_dir(cli_value)` classmethod — resolves in order
   CLI arg → env var → default, converts to an absolute path, and creates the directory
   (`parents=True, exist_ok=True`).
-- `base_argv(default_data_dir)` method — returns argv for re-invoking the current binary.
+- `base_argv()` method — returns argv for re-invoking the current binary.
   The first element is `Path(sys.argv[0]).resolve()`, which correctly targets the running
   binary under multiple installs on PATH, `uv run`, dev-mode entry points, and pipx.
-  `--data-dir` is appended only when `data_dir` differs from `default_data_dir`.
+  `--data-dir` is appended only when `data_dir` differs from the resolved default.
 
 ```python
 from mm_clikit import spawn_daemon
