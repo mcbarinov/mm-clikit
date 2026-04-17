@@ -1,12 +1,9 @@
 """Base class for dual-mode (JSON / display) CLI output."""
 
-# ruff: noqa: T201 -- output layer
-
-import json
-
 from rich.console import Console, RenderableType
 
 from .json_mode import get_json_mode
+from .output import print_json
 
 
 class DualModeOutput:
@@ -30,6 +27,6 @@ class DualModeOutput:
     def output(self, *, json_data: dict[str, object], display_data: RenderableType) -> None:
         """Output a result in JSON or display format."""
         if self.json_mode:
-            print(json.dumps({"ok": True, "data": json_data}))
+            print_json({"ok": True, "data": json_data})
         else:
             Console().print(display_data)

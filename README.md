@@ -152,7 +152,7 @@ To disable automatic error handling: `TyperPlus(error_handler=None)`.
 
 ### fatal
 
-Print a message to stdout and exit with code 1.
+Print a message to stderr and exit with code 1.
 
 ```python
 from mm_clikit import fatal

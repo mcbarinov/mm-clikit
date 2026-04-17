@@ -92,19 +92,19 @@ class TestLoadOrExit:
         assert config.port == 8080
 
     def test_missing_file(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        """Exits with code 1 and prints error for missing file."""
+        """Exits with code 1 and prints error to stderr for missing file."""
         with pytest.raises(click.exceptions.Exit, match="1"):
             SampleConfig.load_or_exit(tmp_path / "missing.toml")
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "can't load config" in output
 
     def test_validation_error(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        """Exits with code 1 and prints per-field validation errors."""
+        """Exits with code 1 and prints per-field validation errors to stderr."""
         path = tmp_path / "config.toml"
         path.write_text("host = 123\n")
         with pytest.raises(click.exceptions.Exit, match="1"):
             SampleConfig.load_or_exit(path)
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "config validation errors" in output
         assert "host" in output
 
