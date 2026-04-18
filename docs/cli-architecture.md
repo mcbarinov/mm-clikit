@@ -405,7 +405,10 @@ class Output(DualModeOutput):
 ```
 
 Every user-visible output goes through a dedicated `Output` method. Each method provides:
-- `json_data` — dict for `--json` mode (envelope: `{"ok": true, "data": {...}}`)
+- `json_data` — dict for `--json` mode. Emitted inside the unified envelope
+  `{"ok": true, "data": {...}, "error": null}`; the default error handler
+  emits `{"ok": false, "data": null, "error": {"code": "...", "message": "..."}}`
+  with the same three keys.
 - `display_data` — string or Rich renderable for normal mode
 
 ### cli/main.py

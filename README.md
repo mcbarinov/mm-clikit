@@ -2,6 +2,10 @@
 
 Shared CLI utilities on top of [Typer](https://typer.tiangolo.com/).
 
+**Platform support:** Linux and macOS only. Windows is not supported and not planned —
+`mm_clikit.process` uses POSIX primitives (`fork`, `setsid`, POSIX signals) and will
+raise `ImportError` on Windows at import time.
+
 ## Installation
 
 ```bash
@@ -126,8 +130,25 @@ $ my-app start
 Error: service not configured    # exit code 1
 
 $ my-app --json start
-{"ok": false, "error": "NOT_CONFIGURED", "message": "service not configured"}
+{"ok": false, "data": null, "error": {"code": "NOT_CONFIGURED", "message": "service not configured"}}
 ```
+
+#### JSON envelope
+
+`--json` output always emits three top-level keys so a client can inspect any
+response without branching on the `ok` flag:
+
+```json
+{"ok": true,  "data": {...}, "error": null}
+{"ok": false, "data": null,  "error": {"code": "...", "message": "..."}}
+```
+
+- `ok` — `true` on success, `false` on error.
+- `data` — success payload object, or `null` on error.
+- `error` — `null` on success, otherwise an object with `code` and `message`.
+
+`DualModeOutput` emits the success shape; the default error handler emits the
+error shape. Both use the same schema.
 
 Subclass `CliError` for domain-specific errors:
 
@@ -335,8 +356,28 @@ The snippet above gives you a default of `~/.local/my-app` and env var
 ```python
 class Config(BaseDataDirConfig):
     app_name: ClassVar[str] = "my-app"
-    default_data_dir: ClassVar[Path] = Path.home() / ".config" / "my-app"  # XDG layout
+    default_data_dir: ClassVar[Path] = Path.home() / ".config" / "my-app"
 ```
+
+#### Data directory convention
+
+`BaseDataDirConfig` resolves to a **single flat directory** (`~/.local/<app_name>/`).
+This is intentional — we do **not** adopt the XDG Base Directory split
+(`~/.config/<app>` + `~/.local/share/<app>` + `~/.cache/<app>`).
+
+Reasoning:
+
+- **One directory per app.** Uninstall is `rm -rf <data_dir>` with no leftovers;
+  XDG scatters state across several dirs that partial uninstallers routinely miss.
+- **Matches established dev-tool precedent.** `pyenv`, `rbenv`, `nvm`, `rustup`,
+  `aws`, `docker`, `kube`, `ssh`, `gnupg`, `npm` all keep their state under a
+  single per-app directory.
+- **XDG's main benefit is selective backup / sync** (skip cache, commit config
+  to a dotfiles repo). For the personal-CLI scope this library targets, that
+  benefit does not outweigh the uninstall and mental-model costs.
+
+If a consumer app genuinely needs XDG separation it can override `default_data_dir`
+or build its own config layout on top of `BaseConfig`.
 
 `BaseDataDirConfig` adds:
 

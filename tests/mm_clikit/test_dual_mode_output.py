@@ -30,14 +30,14 @@ class TestOutput:
     """Tests for output method."""
 
     def test_json_mode(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Outputs JSON envelope with ok=true and data."""
+        """Outputs JSON envelope with ok=true, data payload, and error=null."""
         ctx = click.Context(click.Command("test"))
         ctx.meta["_json_mode"] = True
         with ctx:
             out = DualModeOutput()
         out.output(json_data={"count": 3}, display_data="3 items found")
         result = json.loads(capsys.readouterr().out)
-        assert result == {"ok": True, "data": {"count": 3}}
+        assert result == {"ok": True, "data": {"count": 3}, "error": None}
 
     def test_display_string(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Outputs plain string via builtin print."""
@@ -67,4 +67,4 @@ class TestOutput:
         table.add_row("test")
         out.output(json_data={"items": ["test"]}, display_data=table)
         result = json.loads(capsys.readouterr().out)
-        assert result == {"ok": True, "data": {"items": ["test"]}}
+        assert result == {"ok": True, "data": {"items": ["test"]}, "error": None}

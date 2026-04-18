@@ -1,9 +1,14 @@
 [project]
 name = "mm-clikit"
-version = "0.1.10"
+version = "0.2.0"
 description = "Shared CLI utilities library."
 keywords = []
 requires-python = ">=3.14"
+classifiers = [
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+]
 dependencies = [
     "mm-result~=0.2.0",
     "mm-std~=0.7.1",

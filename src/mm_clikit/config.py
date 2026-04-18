@@ -38,6 +38,28 @@ class BaseDataDirConfig(BaseConfig):
 
     At least one of ``app_name`` or ``default_data_dir`` must be set, otherwise
     ``resolve_data_dir`` / ``base_argv`` raise ``TypeError``.
+
+    Design note — one directory per app, not XDG
+    --------------------------------------------
+    This class resolves to a single flat directory (``~/.local/<app_name>/`` by
+    default).  We intentionally do **not** adopt the XDG Base Directory split
+    (``~/.config/<app>`` + ``~/.local/share/<app>`` + ``~/.cache/<app>``).
+
+    Rationale:
+
+    - One directory per app means uninstall is ``rm -rf <data_dir>`` with no
+      leftovers.  XDG scatters state across three or four dirs, which partial
+      uninstallers routinely miss.
+    - Matches the precedent of dev tools that manage a single coherent tree:
+      ``pyenv``, ``rbenv``, ``nvm``, ``rustup``, ``aws``, ``docker``, ``kube``,
+      ``ssh``, ``gnupg``, ``npm``.
+    - XDG's primary benefit is selective backup / sync (skip cache, commit
+      config to a dotfiles repo).  For the personal-CLI use case this library
+      targets, that benefit does not outweigh the uninstall and mental-model
+      costs above.
+
+    If a consumer app genuinely needs XDG separation, it can set its own
+    ``default_data_dir`` or override ``data_dir`` at the application level.
     """
 
     default_data_dir: ClassVar[Path | None] = None

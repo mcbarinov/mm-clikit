@@ -24,10 +24,13 @@ def setup_logging(
     quiet_loggers: Sequence[str] = (),
     quiet_level: int = logging.WARNING,
     install_excepthook: bool | None = None,
-) -> None:
+) -> bool:
     """Configure a named logger with optional file and console handlers.
 
-    Idempotent — skips if the logger already has handlers attached.
+    Idempotent — if the logger already has handlers attached, returns ``False``
+    without touching the existing configuration.  Returns ``True`` when setup
+    actually ran.  Callers that need to reconfigure a logger must first remove
+    its existing handlers.
 
     Args:
         logger_name: Logger name (typically the top-level package, e.g. "mb_todo").
@@ -43,10 +46,14 @@ def setup_logging(
             it when ``file_path`` is set and disables it otherwise. ``True``/``False`` are
             explicit overrides. See the implementation block below for the full rationale.
 
+    Returns:
+        ``True`` if setup ran (the logger was not previously configured),
+        ``False`` if it was already configured and nothing was changed.
+
     """
     logger = logging.getLogger(logger_name)
     if logger.handlers:
-        return
+        return False
 
     active_levels: list[int] = []
 
@@ -68,7 +75,7 @@ def setup_logging(
         logging.getLogger(name).setLevel(quiet_level)
 
     if not active_levels:
-        return
+        return True
 
     logger.setLevel(min(active_levels))
     logger.propagate = False
@@ -117,3 +124,5 @@ def setup_logging(
             previous(exc_type, exc, tb)
 
         sys.excepthook = _hook
+
+    return True

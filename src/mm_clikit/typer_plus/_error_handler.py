@@ -15,9 +15,17 @@ ErrorHandler = Callable[[CliError], NoReturn]
 
 
 def _default_error_handler(error: CliError) -> NoReturn:
-    """Format a CliError as JSON or display and exit."""
+    """Format a CliError as JSON or display and exit.
+
+    JSON shape mirrors the :class:`DualModeOutput` envelope schema — ``data``
+    and ``error`` are always both present so clients can unconditionally
+    dereference either key.  Success path emits ``{"ok": true, "data": ...,
+    "error": null}``; this error path emits ``{"ok": false, "data": null,
+    "error": {"code": ..., "message": ...}}``.
+    """
     if get_json_mode():
-        print_plain(json_dumps({"ok": False, "error": error.code, "message": str(error)}))
+        envelope = {"ok": False, "data": None, "error": {"code": error.code, "message": str(error)}}
+        print_plain(json_dumps(envelope))
     else:
         print_plain(f"Error: {error}", file=sys.stderr)
     raise typer.Exit(error.exit_code)

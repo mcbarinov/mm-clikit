@@ -1,5 +1,8 @@
 """Tests for TyperPlus and version callback."""
 
+import json
+from typing import NoReturn
+
 import click
 import pytest
 import typer
@@ -575,3 +578,114 @@ class TestHideMetaOptions:
 
         result = runner.invoke(app, ["--help-all"])
         assert result.exit_code != 0
+
+
+def _register_error_commands(app: mm_clikit.TyperPlus) -> mm_clikit.TyperPlus:
+    """Attach a set of commands that raise various CliError shapes."""
+
+    @app.command("boom")
+    def boom() -> None:
+        """Raise a basic CliError with a code."""
+        raise mm_clikit.CliError("disk full", "DISK_FULL")
+
+    @app.command("fail")
+    def fail() -> None:
+        """Raise without a code to exercise the default."""
+        raise mm_clikit.CliError("nope")
+
+    @app.command("teapot")
+    def teapot() -> None:
+        """Raise with a custom exit code."""
+        raise mm_clikit.CliError("short and stout", "TEAPOT", exit_code=42)
+
+    @app.command("explode")
+    def explode() -> None:
+        """Raise a non-CliError exception."""
+        raise RuntimeError("unexpected")
+
+    class DomainError(mm_clikit.CliError):
+        """Sample CliError subclass."""
+
+    @app.command("bad")
+    def bad() -> None:
+        """Raise a CliError subclass."""
+        raise DomainError("domain failure", "DOMAIN")
+
+    return app
+
+
+def _build_error_app() -> mm_clikit.TyperPlus:
+    """Build a multi-command app with the default error handler."""
+    return _register_error_commands(mm_clikit.TyperPlus())
+
+
+class TestErrorHandling:
+    """End-to-end tests for CliError handling in TyperPlus."""
+
+    def test_plain_error_goes_to_stderr(self) -> None:
+        """Default handler prints ``Error: <message>`` to stderr and exits with code 1."""
+        result = runner.invoke(_build_error_app(), ["boom"])
+        assert result.exit_code == 1
+        assert "Error: disk full" in result.stderr
+        assert result.stdout == ""
+
+    def test_json_mode_emits_envelope_on_stdout(self) -> None:
+        """With --json, the handler emits the unified JSON envelope on stdout."""
+        result = runner.invoke(_build_error_app(), ["--json", "boom"])
+        assert result.exit_code == 1
+        envelope = json.loads(result.stdout.strip().splitlines()[-1])
+        assert envelope == {
+            "ok": False,
+            "data": None,
+            "error": {"code": "DISK_FULL", "message": "disk full"},
+        }
+
+    def test_default_code_is_error(self) -> None:
+        """CliError without an explicit code uses ``ERROR`` in the envelope."""
+        result = runner.invoke(_build_error_app(), ["--json", "fail"])
+        envelope = json.loads(result.stdout.strip().splitlines()[-1])
+        assert envelope == {
+            "ok": False,
+            "data": None,
+            "error": {"code": "ERROR", "message": "nope"},
+        }
+
+    def test_custom_exit_code_is_respected(self) -> None:
+        """``CliError(..., exit_code=N)`` propagates to the process exit code."""
+        result = runner.invoke(_build_error_app(), ["teapot"])
+        assert result.exit_code == 42
+
+    def test_subclassed_cli_error_is_caught(self) -> None:
+        """Subclasses of ``CliError`` route through the same handler."""
+        result = runner.invoke(_build_error_app(), ["--json", "bad"])
+        envelope = json.loads(result.stdout.strip().splitlines()[-1])
+        assert envelope == {
+            "ok": False,
+            "data": None,
+            "error": {"code": "DOMAIN", "message": "domain failure"},
+        }
+
+    def test_non_cli_error_is_not_caught(self) -> None:
+        """Regular exceptions are not swallowed by the default handler."""
+        result = runner.invoke(_build_error_app(), ["explode"])
+        assert result.exit_code != 0
+        assert isinstance(result.exception, RuntimeError)
+
+    def test_error_handler_none_disables_catching(self) -> None:
+        """``error_handler=None`` lets CliError escape to the caller."""
+        app = _register_error_commands(mm_clikit.TyperPlus(error_handler=None))
+        result = runner.invoke(app, ["boom"])
+        assert result.exit_code != 0
+        assert isinstance(result.exception, mm_clikit.CliError)
+
+    def test_custom_error_handler_is_used(self) -> None:
+        """A custom error_handler replaces the default."""
+
+        def handler(error: mm_clikit.CliError) -> NoReturn:
+            typer.echo(f"custom:{error.code}:{error}")
+            raise typer.Exit(7)
+
+        app = _register_error_commands(mm_clikit.TyperPlus(error_handler=handler))
+        result = runner.invoke(app, ["boom"])
+        assert result.exit_code == 7
+        assert "custom:DISK_FULL:disk full" in result.output

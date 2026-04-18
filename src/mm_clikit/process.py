@@ -1,5 +1,10 @@
 """Process management utilities: PID files, liveness checks, spawning, stopping."""
 
+import sys
+
+if sys.platform == "win32":
+    raise ImportError("mm_clikit.process is POSIX-only; Windows is not supported")
+
 import contextlib
 import os
 import signal
@@ -161,6 +166,8 @@ def spawn_daemon(args: list[str]) -> int:
             os._exit(0)
         # Grandchild: daemonize and exec.
         os.setsid()
+        # Release any hold on the parent's working directory before exec.
+        os.chdir("/")
         devnull = os.open(os.devnull, os.O_RDWR)
         for fd in (0, 1, 2):
             os.dup2(devnull, fd)
